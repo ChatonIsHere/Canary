@@ -12,20 +12,31 @@
 <link rel="stylesheet" href="viewer.css">
 </head>
 <body>
-<header class="bar">
-  <div class="bar-row">
-    <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>Canary Viewer</h1>
-    <div class="bar-actions">
+<button class="theme-toggle" id="theme-btn" type="button" aria-label="Switch to dark theme">
+  <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+  <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+</button>
+<input id="file-input" type="file" multiple accept=".jsonl,.gz,.zip,.json,.txt" hidden>
+
+<main id="main">
+  <section id="welcome" class="welcome">
+    <div class="drop" id="drop">
+      <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>Canary Viewer</h1>
+      <p>Open recordings, saved buffers or reports from a server's <code>UserData/Canary</code> folder, or drop
+        them here. Several at once are merged into one timeline.</p>
       <label class="btn primary" for="file-input">Open files</label>
-      <input id="file-input" type="file" multiple accept=".jsonl,.gz,.zip,.json,.txt" hidden>
-      <label class="field" for="tz-select"><span>Times in</span><select id="tz-select"></select></label>
-      <button class="btn ghost" id="theme-btn" type="button" aria-label="Switch theme">Theme: system</button>
+      <p class="small">Nothing is uploaded.</p>
     </div>
-  </div>
-  <div class="bar-row sub" id="range-row" hidden>
+  </section>
+
+  <div class="toolbar" id="range-row" hidden>
     <span id="range-text"></span>
-    <button class="btn small" id="reset-zoom" type="button">Zoom out</button>
-    <button class="btn small ghost" id="csv-btn" type="button">Export CSV</button>
+    <div class="toolbar-actions">
+      <label class="field" for="tz-select"><span>Times in</span><select id="tz-select"></select></label>
+      <button class="btn small" id="reset-zoom" type="button">Zoom out</button>
+      <button class="btn small" id="csv-btn" type="button">Export CSV</button>
+      <label class="btn small" for="file-input">Open files</label>
+    </div>
   </div>
   <nav class="nav" id="nav" hidden>
     <a href="#overview">Overview</a>
@@ -39,17 +50,6 @@
     <a href="#files">Files</a>
     <a href="#raw">Raw</a>
   </nav>
-</header>
-
-<main id="main">
-  <section id="welcome" class="welcome">
-    <div class="drop" id="drop">
-      <h2>Open Canary files</h2>
-      <p>Drop recordings, saved buffers or reports here, or use <strong>Open files</strong>. Several at once
-        are merged into one timeline.</p>
-      <p>They're in the server's <code>UserData/Canary</code> folder. Nothing is uploaded.</p>
-    </div>
-  </section>
 
   <div id="tz-banner" class="tz-banner" hidden></div>
   <div id="load-notes" class="notes" hidden></div>

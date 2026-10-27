@@ -12,22 +12,24 @@
   let M = null;
   let range = [0, 0];
 
-  // Theme
-  const themes = ["system", "light", "dark"];
-  let theme = store.get("canary-theme") || "system";
+  // Theme: follows the system until the toggle is used.
+  const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+  let theme = ["light", "dark"].includes(store.get("canary-theme")) ? store.get("canary-theme") : null;
+  const isDark = () => theme ? theme === "dark" : darkQuery.matches;
   function applyTheme() {
-    if (theme === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = theme;
-    $("theme-btn").textContent = `Theme: ${theme}`;
+    if (theme) document.documentElement.dataset.theme = theme;
+    else delete document.documentElement.dataset.theme;
+    document.documentElement.classList.toggle("dark-ui", isDark());
+    $("theme-btn").setAttribute("aria-label", isDark() ? "Switch to light theme" : "Switch to dark theme");
   }
   applyTheme();
   $("theme-btn").addEventListener("click", () => {
-    theme = themes[(themes.indexOf(theme) + 1) % themes.length];
+    theme = isDark() ? "light" : "dark";
     store.set("canary-theme", theme);
     applyTheme();
     if (M) rebuild();
   });
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (M && theme === "system") rebuild(); });
+  darkQuery.addEventListener("change", () => { applyTheme(); if (M && !theme) rebuild(); });
 
   // Time zone
   function tzOptions() {
