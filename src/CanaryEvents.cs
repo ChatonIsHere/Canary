@@ -16,6 +16,7 @@ public static class CanaryEvents
     public static event Action<ErrorRecord> NewError;
     public static event Action<PositionsRecord> Positions;
     public static event Action<CensusRecord> Census;
+    public static event Action<ResourceRecord> Resources;
     public static event Action<MarkRecord> Mark;
 
     private static ConsoleEvent<Sample> _consoleSample;
@@ -23,6 +24,7 @@ public static class CanaryEvents
     private static ConsoleEvent<ErrorRecord> _consoleError;
     private static ConsoleEvent<PositionsRecord> _consolePositions;
     private static ConsoleEvent<CensusRecord> _consoleCensus;
+    private static ConsoleEvent<ResourceRecord> _consoleResources;
     private static ConsoleEvent<MarkRecord> _consoleMark;
 
     internal static void RegisterConsoleEvents()
@@ -32,6 +34,7 @@ public static class CanaryEvents
         _consoleError = new ConsoleEvent<ErrorRecord>("CanaryNewError");
         _consolePositions = new ConsoleEvent<PositionsRecord>("CanaryPlayerPositions");
         _consoleCensus = new ConsoleEvent<CensusRecord>("CanaryEntityCensus");
+        _consoleResources = new ConsoleEvent<ResourceRecord>("CanaryResources");
         _consoleMark = new ConsoleEvent<MarkRecord>("CanaryMark");
     }
 
@@ -44,6 +47,7 @@ public static class CanaryEvents
             case ErrorRecord r: Fire(NewError, r); _consoleError?.Invoke(() => r); break;
             case PositionsRecord r: Fire(Positions, r); _consolePositions?.Invoke(() => r); break;
             case CensusRecord r: Fire(Census, r); _consoleCensus?.Invoke(() => r); break;
+            case ResourceRecord r: Fire(Resources, r); _consoleResources?.Invoke(() => r); break;
             case MarkRecord r: Fire(Mark, r); _consoleMark?.Invoke(() => r); break;
         }
     }

@@ -11,7 +11,7 @@ namespace Canary;
 
 public class CanaryMod : MelonMod
 {
-    public const string Version = "0.1.0";
+    public const string Version = "0.2.0";
 
     internal static MelonLogger.Instance Log { get; private set; }
 
@@ -35,6 +35,7 @@ public class CanaryMod : MelonMod
         // NLog's configuration is only loaded once the game itself starts, after mods initialize.
         MelonEvents.OnApplicationLateStart.Subscribe(ErrorGroups.Install);
         Recorder.Start();
+        ResourceMonitor.Start();
         CanaryEvents.RegisterConsoleEvents();
         Alta.Console.CommandService.CommandCollection.Collect(Assembly.GetExecutingAssembly());
         Log.Msg($"Recording the last {CanaryConfig.BufferMinutes} minutes; 'canary status' for details.");

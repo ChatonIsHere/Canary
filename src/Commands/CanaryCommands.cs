@@ -23,16 +23,26 @@ public static class CanaryCommands
         var recording = Recorder.Recording;
         sb.AppendLine(recording == null
             ? "Not recording to disk ('canary record start' to begin)."
-            : $"Recording to {recording.Path} since {recording.Started.ToLocalTime():HH:mm:ss} ({recording.Records} records).");
+            : $"Recording since {ServerTime.Of(recording.Started):yyyy-MM-dd HH:mm:ss}: {recording.Records} records, {recording.Bytes / 1048576.0:F2} MB, part {recording.Part}, now writing {recording.Path}.");
 
         if (Recorder.LastSample is { } s)
             sb.AppendLine($"Last second: {s.Frames} frames, avg {s.AvgMs} ms, p95 {s.P95Ms} ms, max {s.MaxMs} ms; {s.Players} player(s), {s.Entities} entities, heap {s.HeapMb} MB.");
+
+        if (Recorder.LastResources is { } r)
+        {
+            var m = r.Machine;
+            sb.AppendLine($"Server process: CPU {r.CpuPct}% of the machine ({r.CpuCores} cores), {r.MemMb} MB, disk read {r.DiskReadKBps} / write {r.DiskWriteKBps} KB/s, "
+                          + $"game traffic out {r.GameOutKBps} KB/s; with child processes CPU {r.TotalCpuPct}%, {r.TotalMemMb} MB.");
+            sb.AppendLine($"Machine: CPU {m?.CpuPct}% of {m?.Cores} cores, memory {m?.MemUsedMb} of {m?.MemTotalMb} MB, network in {m?.NetRxKBps} / out {m?.NetTxKBps} KB/s, "
+                          + $"{m?.DiskFreeGb} of {m?.DiskTotalGb} GB free on the game's drive.");
+        }
 
         var spikes = Recorder.Snapshot().OfType<SpikeRecord>().ToList();
         sb.AppendLine($"Lag spikes over {CanaryConfig.SpikeMs} ms in the buffer: {spikes.Count}{(spikes.Count > 0 ? $", worst {spikes.Max(x => x.Ms)} ms" : "")}.");
         sb.AppendLine($"Error groups since boot: {ErrorGroups.All.Count()} ({ErrorGroups.All.Sum(g => g.Count)} occurrences).");
         foreach (var (pattern, left) in DebugLogging.Active)
             sb.AppendLine($"Trace logging on for '{pattern}', {Math.Max(0, left.TotalMinutes):F1} minute(s) left.");
+        sb.AppendLine(ServerTime.Legend());
         return sb.ToString().TrimEnd();
     }
 
@@ -60,8 +70,8 @@ public static class CanaryCommands
     {
         var spikes = Recorder.Snapshot().OfType<SpikeRecord>().Reverse().Take(Math.Max(1, count)).ToList();
         if (spikes.Count == 0) return $"No lag spikes over {CanaryConfig.SpikeMs} ms in the last {CanaryConfig.BufferMinutes} minute(s).";
-        return string.Join("\n", spikes.Select(s =>
-            $"{Local(s.Time):HH:mm:ss}  {s.Ms,7:F0} ms{(s.Gc ? "  GC" : "    ")}  {s.Players} player(s), {s.Entities} entities"));
+        return ServerTime.Legend() + "\n" + string.Join("\n", spikes.Select(s =>
+            $"{ServerTime.Of(s.Time):HH:mm:ss}  {s.Ms,7:F0} ms{(s.Gc ? "  GC" : "    ")}  {s.Players} player(s), {s.Entities} entities"));
     }
 
     [ServerOnly]
@@ -81,7 +91,8 @@ public static class CanaryCommands
         var g = ErrorGroups.All.FirstOrDefault(x => x.Id == id);
         if (g == null) return $"No error group '{id}'.";
         return $"[{g.Id}] {g.Level} from {g.Mod}, logger {g.Logger}\n"
-               + $"{g.Count} time(s), first {g.FirstSeen.ToLocalTime():HH:mm:ss}, last {g.LastSeen.ToLocalTime():HH:mm:ss}\n"
+               + $"{g.Count} time(s), first {ServerTime.Of(g.FirstSeen):yyyy-MM-dd HH:mm:ss}, last {ServerTime.Of(g.LastSeen):yyyy-MM-dd HH:mm:ss}\n"
+               + ServerTime.Legend() + "\n"
                + $"{g.Message}\n{g.Stack}";
     }
 
@@ -102,7 +113,8 @@ public static class CanaryCommands
         {
             if (Recorder.Recording is { } current) return $"Already recording to {current.Path}.";
             var recording = Recorder.StartRecording(name);
-            return $"Recording to {recording.Path}.";
+            return $"Recording to {recording.Path}, starting with the {recording.Records} records already in the buffer. "
+                   + $"A new part starts every {CanaryConfig.RotateMinutes} minute(s).";
         }
 
         [ServerOnly]
@@ -110,7 +122,9 @@ public static class CanaryCommands
         private static string Stop()
         {
             var recording = Recorder.StopRecording();
-            return recording == null ? "Not recording." : $"Stopped. {recording.Records} records in {recording.Path}.";
+            return recording == null
+                ? "Not recording."
+                : $"Stopped. {recording.Records} records, {recording.Bytes / 1048576.0:F2} MB in {recording.Part} part(s); the last is {recording.Path}.";
         }
     }
 
@@ -134,8 +148,6 @@ public static class CanaryCommands
             else CanaryMod.Log.Msg($"{done} {t.Result}");
         });
     }
-
-    private static DateTime Local(long unixMs) => DateTimeOffset.FromUnixTimeMilliseconds(unixMs).LocalDateTime;
 
     private static string OneLine(string s)
     {

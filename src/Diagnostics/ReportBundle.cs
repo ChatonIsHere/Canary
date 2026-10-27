@@ -28,9 +28,10 @@ internal static class ReportBundle
 
     public static Task<string> CreateAsync()
     {
-        var path = Path.Combine(Directory, $"canary-report-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+        var path = Path.Combine(Directory, $"canary-report-{DateTime.UtcNow:yyyyMMdd'T'HHmmss'Z'}.zip");
         var summary = Summary();
         var records = Recorder.Snapshot();
+        records.Insert(0, HeaderRecord.Create("report", null, 0));
         var errors = ErrorGroups.All.OrderByDescending(g => g.Count).ToList();
         var mods = Mods();
         var logs = LogFiles();
@@ -53,7 +54,10 @@ internal static class ReportBundle
         var sb = new StringBuilder();
         var uptime = TimeSpan.FromMilliseconds(UnixMs.Now - Recorder.StartedAt);
         var last = Recorder.LastSample;
-        sb.AppendLine($"Canary {CanaryMod.Version} report, {DateTime.Now:yyyy-MM-dd HH:mm:ss zzz}");
+        var now = ServerTime.Of(DateTime.UtcNow);
+        sb.AppendLine($"Canary {CanaryMod.Version} report");
+        sb.AppendLine($"Written {now:yyyy-MM-dd HH:mm:ss} server time ({ServerTime.Zone(now)}), {now.UtcDateTime:yyyy-MM-dd HH:mm:ss} UTC");
+        sb.AppendLine("Every time in buffer.jsonl and errors.json is UTC.");
         sb.AppendLine($"Game {Application.version}, MelonLoader {MelonLoader.Properties.BuildInfo.Version}, Unity {Application.unityVersion}");
         sb.AppendLine($"OS {SystemInfo.operatingSystem}; {SystemInfo.processorType} x{SystemInfo.processorCount}; {SystemInfo.systemMemorySize} MB RAM");
         sb.AppendLine($"Uptime {uptime:d\\.hh\\:mm\\:ss}");
