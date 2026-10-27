@@ -1,6 +1,5 @@
-// Time zones. Canary stores every time as UTC milliseconds; each file's header records the server's UTC
-// offset and zone when it was written. The page can show times in three zones, and every time it shows is
-// formatted through here so the chosen zone is applied (and named) consistently.
+// Every time on the page goes through here, so the chosen zone is applied and named the same way
+// everywhere. Records are UTC; headers carry the server's offset.
 "use strict";
 
 const Time = (() => {
@@ -18,8 +17,7 @@ const Time = (() => {
 
   const browserOffsetAt = ms => -new Date(ms).getTimezoneOffset();
 
-  // The header in force at a moment: the latest one written at or before it (a recording that crosses a
-  // daylight saving change has a new header in each part), else the earliest.
+  // The latest header at or before a moment (each part gets one, for daylight saving).
   function headerAt(ms) {
     if (!headers.length) return null;
     let found = headers[0];

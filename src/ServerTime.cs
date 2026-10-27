@@ -2,9 +2,7 @@ using System;
 
 namespace Canary;
 
-// Every time Canary records is a UTC unix timestamp. Anything it shows a person (console output, report
-// summaries) is the server's local time, always labelled with the server's UTC offset and time zone so a
-// reader in another zone knows how to read it.
+// Console and report times are server-local and always say which zone.
 internal static class ServerTime
 {
     public static DateTimeOffset Of(long unixMs) =>
@@ -28,6 +26,5 @@ internal static class ServerTime
         return $"{Offset(at)}, {zone.Id}{dst}";
     }
 
-    // What every list of times in the console starts with.
     public static string Legend() => $"Times are server time ({Zone(DateTimeOffset.Now)}).";
 }

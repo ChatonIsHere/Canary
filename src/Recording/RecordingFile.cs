@@ -8,10 +8,8 @@ using Newtonsoft.Json;
 
 namespace Canary.Recording;
 
-// One .jsonl file of records. A recording part is written as plain text, which flushes to disk reliably
-// (Mono's GZipStream only writes its data when closed, so a crash would lose a whole gzipped part), and is
-// gzipped once it's closed. A part left plain by a crash is gzipped on the next boot. A saved buffer is
-// written in one go, so it's gzipped directly.
+// Parts are written plain and gzipped once closed: Mono's GZipStream writes nothing until it's closed,
+// so a crash would lose the whole part. Saved buffers are written in one go, so they're gzipped directly.
 internal sealed class RecordingFile : IDisposable
 {
     private static readonly JsonSerializerSettings Json = new() { Formatting = Formatting.None };
@@ -41,7 +39,7 @@ internal sealed class RecordingFile : IDisposable
         return file;
     }
 
-    // Serializes on a worker thread; records never change once added, so the snapshot is safe to share.
+    // Records never change, so the snapshot can be serialized off the main thread.
     public static Task<string> SaveAsync(List<Record> records, string name)
     {
         var header = HeaderRecord.Create("saved-buffer", name, 0);
@@ -73,9 +71,7 @@ internal sealed class RecordingFile : IDisposable
 
     private static readonly object GzipLock = new();
 
-    // path -> path.gz, then the plain file is deleted. Worker thread only. A finished part and the boot-time
-    // sweep for crash leftovers can both reach the same file, so one runs at a time and a file already
-    // compressed is skipped.
+    // Worker thread. A finished part and the boot sweep can reach the same file.
     public static void Gzip(string path)
     {
         lock (GzipLock)
@@ -102,7 +98,7 @@ internal sealed class RecordingFile : IDisposable
         }
     });
 
-    // File names are in UTC (the trailing Z), so they sort and compare the same on every machine.
+    // UTC, so names sort the same everywhere.
     private static string NewPath(string kind, string name, int part, bool gzip)
     {
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmss'Z'");

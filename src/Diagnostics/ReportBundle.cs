@@ -17,11 +17,10 @@ using UnityEngine;
 
 namespace Canary.Diagnostics;
 
-// `canary report`: one zip with everything a bug report needs. Game state is read on the main thread;
-// the zip is written on a worker thread so a big log doesn't stall the server.
+// `canary report`. Game state is read on the main thread, the zip is written off it.
 internal static class ReportBundle
 {
-    // Launch arguments whose next value is a credential.
+    // Arguments followed by a credential.
     private static readonly string[] SecretArgs = ["/access_token", "/refresh_token", "/identity_token", "/launcherauth"];
 
     public static string Directory => Path.Combine(CanaryConfig.DataDirectory, "reports");
@@ -92,7 +91,7 @@ internal static class ReportBundle
             ["file"] = m.MelonAssembly?.Location is { } location ? Path.GetFileName(location) : null,
         }));
 
-        // The mod manager's installs: Mods/<id>/manifest.json. Anything else in Mods/ is listed as a plain file.
+        // Mod manager installs are Mods/<id>/manifest.json; anything else is listed as a file.
         var installed = new JArray();
         var modsDir = MelonEnvironment.ModsDirectory;
         if (System.IO.Directory.Exists(modsDir))
@@ -124,7 +123,6 @@ internal static class ReportBundle
         return new JObject { ["melons"] = melons, ["modsFolder"] = installed };
     }
 
-    // MelonLoader's log plus the game's own NLog files (wherever its NLog.config put them).
     private static List<(string Name, string Path)> LogFiles()
     {
         var files = new List<(string, string)> { ("MelonLoader-Latest.log", Path.Combine(MelonEnvironment.MelonLoaderDirectory, "Latest.log")) };
@@ -144,7 +142,7 @@ internal static class ReportBundle
                     }
                     catch
                     {
-                        // An unrenderable path just leaves that log out.
+                        // Leave it out.
                     }
                 }
             }
@@ -158,7 +156,7 @@ internal static class ReportBundle
         writer.Write(text);
     }
 
-    // Logs are open for writing by the game, hence FileShare.ReadWrite.
+    // The game keeps them open.
     private static void AddFile(ZipArchive zip, string name, string path)
     {
         try

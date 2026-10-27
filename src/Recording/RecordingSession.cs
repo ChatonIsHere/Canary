@@ -2,9 +2,8 @@ using System;
 
 namespace Canary.Recording;
 
-// `canary record start` until `stop` (or from boot, with RecordOnBoot). Written as it happens, flushed every
-// few seconds, and split into a new part every RotateMinutes; each finished part is gzipped in the
-// background, so a long recording is a series of complete files and a crash costs at most a few seconds.
+// `canary record start` (or RecordOnBoot). Flushed every few seconds, split into a new part every
+// RotateMinutes.
 internal sealed class RecordingSession : IDisposable
 {
     private const double FlushSeconds = 5;
@@ -20,7 +19,7 @@ internal sealed class RecordingSession : IDisposable
     public long Records { get; private set; }
     public long BytesInEarlierParts { get; private set; }
     public string Path => _file.Path;
-    // Uncompressed: what's been written, before each finished part is gzipped.
+    // Uncompressed.
     public long Bytes => BytesInEarlierParts + (_open ? _file.Bytes : 0);
 
     public RecordingSession(string name)

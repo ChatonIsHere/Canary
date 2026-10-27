@@ -1,4 +1,3 @@
-// Page wiring: opening files, the time zone switch, the theme, and building the timeline.
 "use strict";
 
 (() => {
@@ -8,12 +7,12 @@
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* private window */ } },
   };
-  const TOP = 7; // series per chart before the rest fold into "Other"
+  const TOP = 7; // series per chart; the rest fold into "Other"
 
   let M = null;
   let range = [0, 0];
 
-  // ---- Theme ----------------------------------------------------------------------------------------------
+  // Theme
   const themes = ["system", "light", "dark"];
   let theme = store.get("canary-theme") || "system";
   function applyTheme() {
@@ -30,7 +29,7 @@
   });
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (M && theme === "system") rebuild(); });
 
-  // ---- Time zone ------------------------------------------------------------------------------------------
+  // Time zone
   function tzOptions() {
     const now = M?.tMax ?? Date.now();
     const sel = $("tz-select");
@@ -55,24 +54,24 @@
   function tzBanner() {
     const el = $("tz-banner");
     const at = M.tMax;
-    const lines = [`Times are shown in <strong>${esc(Time.label(at))}</strong>. Change this with <em>Show times in</em> at the top.`];
+    const lines = [`Times are in <strong>${esc(Time.label(at))}</strong>.`];
     if (Time.hasServerZone()) {
       const offsets = [...new Set(M.headers.filter(h => h.utcOffsetMin != null).map(h => h.utcOffsetMin))];
       const h = Time.headerAt(at);
       const diff = h.utcOffsetMin - Time.browserOffsetAt(at);
       const rel = diff === 0 ? "the same as yours" : `${Time.duration(Math.abs(diff) * 60000).replace(" 00 min", "")} ${diff > 0 ? "ahead of" : "behind"} yours`;
-      lines.push(`The server's clock was in <strong>${esc(h.timeZone)}</strong> (${Time.offsetText(h.utcOffsetMin)}${h.daylightSaving ? ", daylight saving" : ""}), ${rel} (${esc(Time.browserZone)}, ${Time.offsetText(Time.browserOffsetAt(at))}).`);
-      if (offsets.length > 1) lines.push(`The server's offset changed during this data (${offsets.map(Time.offsetText).join(" → ")}), most likely a daylight saving change; server time follows it.`);
-      if (M.environment) lines.push(`The server ran on ${esc(M.environment.platform)}${M.environment.container ? ` in ${esc(M.environment.container)}` : ""}${M.environment.container ? `; a container's clock is UTC unless its <code>TZ</code> is set` : ""}.`);
-      lines.push(`File names use UTC (the <code>Z</code> in <code>20261027T120000Z</code>), and the server console prints server time.`);
+      lines.push(`The server was on <strong>${esc(h.timeZone)}</strong> (${Time.offsetText(h.utcOffsetMin)}${h.daylightSaving ? ", daylight saving" : ""}), ${rel}.`);
+      if (offsets.length > 1) lines.push(`Its offset changed during this data (${offsets.map(Time.offsetText).join(" → ")}).`);
+      if (M.environment?.container) lines.push(`It ran in ${esc(M.environment.container)} on ${esc(M.environment.platform)}; containers are on UTC unless <code>TZ</code> is set.`);
+      lines.push(`File names are UTC; the server console prints server time.`);
     } else {
-      lines.push("These files don't record the server's time zone (they were written by Canary 0.1.0, before headers), so <em>Server time</em> isn't available.");
+      lines.push("These files predate time zone headers, so server time isn't available.");
     }
     el.innerHTML = lines.map(l => `<div>${l}</div>`).join("");
     el.hidden = false;
   }
 
-  // ---- Loading ----------------------------------------------------------------------------------------------
+  // Loading
   async function open(fileList) {
     const files = [...fileList];
     if (!files.length) return;
@@ -87,11 +86,11 @@
   function show(parsed) {
     const model = Load.build(parsed);
     const notes = parsed.filter(p => p.notes.length).map(p => `<li><strong>${esc(p.name)}</strong>: ${esc(p.notes.join(" "))}</li>`);
-    $("load-notes").innerHTML = notes.length ? `About the files:<ul>${notes.join("")}</ul>` : "";
+    $("load-notes").innerHTML = notes.length ? `<ul>${notes.join("")}</ul>` : "";
     $("load-notes").hidden = !notes.length;
     if (model.tMin == null) {
       $("load-notes").hidden = false;
-      $("load-notes").innerHTML = `Nothing to show: no Canary records in ${parsed.map(p => esc(p.name)).join(", ")}.${notes.length ? `<ul>${notes.join("")}</ul>` : ""}`;
+      $("load-notes").innerHTML = `No Canary records in ${parsed.map(p => esc(p.name)).join(", ")}.${notes.length ? `<ul>${notes.join("")}</ul>` : ""}`;
       return;
     }
     M = model;
@@ -107,14 +106,13 @@
   }
 
   $("file-input").addEventListener("change", e => { open(e.target.files); e.target.value = ""; });
-  $("demo-btn").addEventListener("click", () => show([Demo.generate()]));
   let dragDepth = 0;
   addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
   addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); } });
   addEventListener("dragover", e => e.preventDefault());
   addEventListener("drop", e => { e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging"); open(e.dataTransfer.files); });
 
-  // ---- Timeline -----------------------------------------------------------------------------------------------
+  // Timeline
   function rebuild() {
     tzOptions();
     tzBanner();
@@ -129,7 +127,6 @@
     rangeText();
   }
 
-  // Folds all but the biggest series into "Other", so a chart never needs more than eight colours.
   function topSeries(map, unitFmt) {
     const names = Object.keys(map);
     const total = n => map[n].reduce((s, v) => s + (v || 0), 0);
@@ -158,30 +155,29 @@
 
   function buildCharts() {
     const c = M.cols, r = M.res, s = Charts.slot, el = $("charts");
-    const critical = Charts.css("--critical"), serious = Charts.css("--serious"), warning = Charts.css("--warning"), muted = Charts.css("--muted");
-    const ms = v => `${Charts.fmtNum(v)} ms`;
+    const critical = Charts.css("--critical"), serious = Charts.css("--serious"), warning = Charts.css("--warning"), muted = Charts.css("--muted-foreground");
 
     Charts.eventLane(el, [
       { label: "Lag spikes", color: critical, events: M.spikes.map(x => ({ t: x.t, size: 3 + Math.min(6, x.ms / 300), d: x })),
-        describe: e => `<strong>Lag spike: ${Charts.fmtNum(e.d.ms, 0)} ms</strong><br>${esc(Time.fmt(e.t))}<br>${e.d.gc ? "Garbage collection ran in that frame. " : ""}${e.d.players} player(s), ${e.d.entities.toLocaleString()} entities` },
+        describe: e => `<strong>Lag spike: ${Charts.fmtNum(e.d.ms, 0)} ms</strong><br>${esc(Time.fmt(e.t))}<br>${e.d.gc ? "GC ran. " : ""}${e.d.players} player(s), ${e.d.entities.toLocaleString()} entities` },
       { label: "Garbage collection", color: warning, shape: "tick", events: M.samples.filter(x => x.gc && x.gc[0] > 0).map(x => ({ t: x.t, d: x })),
-        describe: e => `<strong>Garbage collection</strong><br>${esc(Time.fmt(e.t))}<br>${e.d.gc[0]} collection(s) that second; slowest frame ${Charts.fmtNum(e.d.maxMs)} ms; heap ${Charts.fmtNum(e.d.heapMb, 0)} MB after` },
+        describe: e => `<strong>Garbage collection</strong><br>${esc(Time.fmt(e.t))}<br>slowest frame ${Charts.fmtNum(e.d.maxMs)} ms, heap ${Charts.fmtNum(e.d.heapMb, 0)} MB after` },
       { label: "New errors", color: serious, events: M.errors.map(x => ({ t: x.t, d: x })),
-        describe: e => `<strong>${esc(e.d.level)} from ${esc(e.d.mod)}</strong> (first time)<br>${esc(Time.fmt(e.t))}<br>${esc(String(e.d.message).split("\n")[0].slice(0, 200))}` },
+        describe: e => `<strong>${esc(e.d.level)} from ${esc(e.d.mod)}</strong><br>${esc(Time.fmt(e.t))}<br>${esc(String(e.d.message).split("\n")[0].slice(0, 200))}` },
       { label: "Marks", color: s(0), events: M.marks.map(x => ({ t: x.t, d: x })),
         describe: e => `<strong>Mark</strong><br>${esc(Time.fmt(e.t))}<br>${esc(e.d.text)}` },
       { label: "Entity counts", color: muted, shape: "tick", events: M.census.map(x => ({ t: x.t, d: x })),
         describe: e => `<strong>Entity count: ${e.d.total.toLocaleString()}</strong><br>${esc(Time.fmt(e.t))}<br>took ${Charts.fmtNum(e.d.durationMs)} ms` },
       { label: "No data", color: muted, events: M.gaps.map(g => ({ t: g.from, t2: g.to, d: g })),
-        describe: e => `<strong>No data for ${esc(Time.duration(e.d.to - e.d.from))}</strong><br>${esc(Time.fmt(e.d.from))} to ${esc(Time.fmt(e.d.to))}<br>The server was down or restarting, or no file covers this time.` },
+        describe: e => `<strong>No data for ${esc(Time.duration(e.d.to - e.d.from))}</strong><br>${esc(Time.fmt(e.d.from))} to ${esc(Time.fmt(e.d.to))}<br>Server down, or no file covers it.` },
     ], $("lane-tip"));
 
     if (c.t.length) {
       group("Performance");
       Charts.timeChart(el, {
-        title: "Frame time", unit: "ms per frame, log scale", unitShort: "ms", note: `Each point is one second: its average, 95th percentile and slowest frame. The red line is the lag spike threshold (${M.settings.spikeMs} ms).`,
-        x: c.t, threshold: M.settings.spikeMs, thresholdLabel: `spike threshold ${M.settings.spikeMs} ms`, height: 210, log: true,
-        // Slowest first, so it's drawn underneath and the average stays visible on top.
+        title: "Frame time", unit: "ms, log scale", unitShort: "ms", note: "Per second: average, p95 and slowest frame.",
+        x: c.t, threshold: M.settings.spikeMs, thresholdLabel: `spike ${M.settings.spikeMs} ms`, height: 210, log: true,
+        // Slowest first, so the average draws on top.
         series: [
           { label: "Slowest", values: c.max, color: s(2) },
           { label: "95th percentile", values: c.p95, color: s(1) },
@@ -190,60 +186,59 @@
       });
       Charts.timeChart(el, { title: "Frames per second", x: c.t, series: [{ label: "Frames", values: c.frames, color: s(0) }], height: 140, fmt: v => Charts.fmtNum(v, 0) });
       if (Object.keys(c.modules).length)
-        Charts.timeChart(el, { title: "Update modules", unit: "ms of main-thread time per second", unitShort: "ms/s", x: c.t, series: topSeries(c.modules), height: 200 });
+        Charts.timeChart(el, { title: "Update modules", unit: "ms per second", unitShort: "ms/s", x: c.t, series: topSeries(c.modules), height: 200 });
 
-      group("Memory and garbage collection");
+      group("Memory");
       Charts.timeChart(el, {
-        title: "Memory", unit: "MB", unitShort: "MB", note: "The managed heap climbs until a garbage collection clears it; low points that keep rising mean memory is being held on to.",
+        title: "Memory", unit: "MB", unitShort: "MB", note: "Low points that keep rising mean something's holding on to memory.",
         x: c.t, series: [{ label: "Managed heap", values: c.heap, color: s(0) }, ...(c.mem.some(v => v) ? [{ label: "Process (working set)", values: c.mem, color: s(1) }] : [])],
       });
       Charts.timeChart(el, { title: "Garbage collections", unit: "per second", x: c.t, series: [{ label: "Collections", values: c.gc, color: s(0), bars: true }], height: 110, fmt: v => Charts.fmtNum(v, 0) });
 
       group("World");
       Charts.timeChart(el, { title: "Players online", x: c.t, series: [{ label: "Players", values: c.players, color: s(0), step: true }], height: 120, fmt: v => Charts.fmtNum(v, 0) });
-      Charts.timeChart(el, { title: "Entities", unit: "networked objects", x: c.t, series: [{ label: "Entities", values: c.entities, color: s(0) }], height: 140, fmt: v => Math.round(v).toLocaleString(), yMin: null });
+      Charts.timeChart(el, { title: "Entities", x: c.t, series: [{ label: "Entities", values: c.entities, color: s(0) }], height: 140, fmt: v => Math.round(v).toLocaleString(), yMin: null });
       if (M.census.length > 1) {
         const ct = M.census.map(x => x.t / 1000);
         const map = {};
         for (const rec of M.census) for (const k of Object.keys(rec.byPrefab || {})) if (!k.startsWith("(")) map[k] = [];
         for (const rec of M.census) for (const k of Object.keys(map)) map[k].push(rec.byPrefab?.[k] ?? 0);
         if (Object.keys(map).length)
-          Charts.timeChart(el, { title: "Spawned entities by type", unit: "count, from the entity census", note: "Objects placed in the scene itself are left out; they don't change.", x: ct, series: topSeries(map, v => Math.round(v).toLocaleString()), height: 200 });
+          Charts.timeChart(el, { title: "Spawned entities by type", note: "Scene-placed objects left out.", x: ct, series: topSeries(map, v => Math.round(v).toLocaleString()), height: 200 });
       }
       Charts.timeChart(el, { title: "Errors and warnings", unit: "per second", x: c.t, series: [{ label: "Errors", values: c.errors, color: s(0), bars: true }], height: 110, fmt: v => Charts.fmtNum(v, 0) });
     }
 
     if (r.t.length) {
       const host = M.inContainer ? "host" : "machine";
-      group("Resources", `Recorded every ${M.settings.resourceSeconds} s. CPU percentages are of the whole ${host} (all cores = 100%). "With child processes" adds anything the server started.`
-        + (M.inContainer ? ` The server ran in a ${M.environment?.container ? `${M.environment.container} container` : "container"}, so the "host" figures are the whole machine the container runs on, and the container charts show the container itself.` : ""));
+      group("Resources", `Every ${M.settings.resourceSeconds} s. CPU % is of the whole ${host}.` + (M.inContainer ? ` "Host" is the machine the container runs on.` : ""));
       if (r.hasContainer) {
         const limit = r.cLimit.find(v => v != null);
         const memLimit = r.cMemLimit.find(v => v != null);
         Charts.timeChart(el, {
           title: "Container CPU", unit: "cores busy", x: r.t, height: 160,
-          note: limit ? `The container may use ${Charts.fmtNum(limit)} cores (red line). At the limit it's made to wait: see throttling below.` : "No CPU limit is set on the container.",
+          note: limit ? "" : "No CPU limit set.",
           threshold: limit ?? undefined, thresholdLabel: limit ? `limit ${Charts.fmtNum(limit)} cores` : "",
-          series: [{ label: "Container (everything in it)", values: r.cCores, color: s(0) }, { label: "Server process", values: r.cpuCores, color: s(1) }],
+          series: [{ label: "Container", values: r.cCores, color: s(0) }, { label: "Server process", values: r.cpuCores, color: s(1) }],
         });
         if (limit) Charts.timeChart(el, {
-          title: "CPU throttling", unit: "% of the time the container had to wait for its CPU limit", unitShort: "%", x: r.t, height: 120,
+          title: "CPU throttling", unit: "% of the time held back by the limit", unitShort: "%", x: r.t, height: 120,
           series: [{ label: "Throttled", values: r.cThrottled, color: s(0) }],
         });
         Charts.timeChart(el, {
           title: "Container memory", unit: "MB", unitShort: "MB", x: r.t, height: 140,
-          note: memLimit ? `The container may use ${Math.round(memLimit).toLocaleString()} MB (red line); past it, Linux kills the biggest process, which is the server.` : "No memory limit is set on the container.",
+          note: memLimit ? "Past the limit, Linux kills the server." : "No memory limit set.",
           threshold: memLimit ?? undefined, thresholdLabel: memLimit ? "limit" : "",
           series: [{ label: "Container", values: r.cMem, color: s(0) }, { label: "Server process", values: r.memMb, color: s(1) }],
         });
-        Charts.timeChart(el, { title: "Container disk I/O", unit: "KB per second", unitShort: "KB/s", x: r.t, height: 130,
+        Charts.timeChart(el, { title: "Container disk I/O", unit: "KB/s", unitShort: "KB/s", x: r.t, height: 130,
           series: [{ label: "Read", values: r.cDiskRead, color: s(0) }, { label: "Write", values: r.cDiskWrite, color: s(1) }] });
       }
       Charts.timeChart(el, {
-        title: "CPU", unit: "% of the whole machine", unitShort: "%", x: r.t, height: 170,
+        title: "CPU", unit: `% of the ${host}`, unitShort: "%", x: r.t, height: 170,
         series: [
           { label: "Server", values: r.cpuPct, color: s(0) },
-          { label: "Server with child processes", values: r.totalCpuPct, color: s(1) },
+          { label: "With child processes", values: r.totalCpuPct, color: s(1) },
           { label: `Whole ${host}`, values: r.mCpu, color: s(2) },
         ],
       });
@@ -258,11 +253,11 @@
       if (r.mMemUsed.some(v => v != null))
         Charts.timeChart(el, { title: M.inContainer ? "Host memory" : "Machine memory", unit: "MB", unitShort: "MB", x: r.t, height: 140,
           series: [{ label: "Used", values: r.mMemUsed, color: s(0) }, { label: "Installed", values: r.mMemTotal, color: s(1) }] });
-      Charts.timeChart(el, { title: "Server disk I/O", unit: "KB per second", unitShort: "KB/s", x: r.t, height: 140,
+      Charts.timeChart(el, { title: "Server disk I/O", unit: "KB/s", unitShort: "KB/s", x: r.t, height: 140,
         series: [{ label: "Read", values: r.diskRead, color: s(0) }, { label: "Write", values: r.diskWrite, color: s(1) }] });
       const net = r.hasContainer ? { rx: r.cRx, tx: r.cTx, who: "Container" } : { rx: r.rx, tx: r.tx, who: "Machine" };
-      Charts.timeChart(el, { title: "Network", unit: "KB per second", unitShort: "KB/s", height: 160,
-        note: `Game traffic is what the server sent to players (the game doesn't count what it receives). The ${net.who.toLowerCase()} lines are every network interface ${r.hasContainer ? "inside the container" : "on the machine"}.`,
+      Charts.timeChart(el, { title: "Network", unit: "KB/s", unitShort: "KB/s", height: 160,
+        note: "The game only counts what it sends.",
         x: r.t, series: [
           { label: "Game, sent", values: r.gameOut, color: s(0) },
           { label: `${net.who}, received`, values: net.rx, color: s(1) },
@@ -270,10 +265,10 @@
         ] });
       Charts.timeChart(el, { title: "Game packets", unit: "per second", x: r.t, height: 130,
         series: [{ label: "Sent", values: r.pktOut, color: s(0) }, { label: "Received", values: r.pktIn, color: s(1) }] });
-      Charts.timeChart(el, { title: "Open handles", unit: "files, sockets and other OS handles", x: r.t, height: 120, series: [{ label: "Handles", values: r.handles, color: s(0) }], fmt: v => Math.round(v).toLocaleString(), yMin: null });
+      Charts.timeChart(el, { title: "Open handles", x: r.t, height: 120, series: [{ label: "Handles", values: r.handles, color: s(0) }], fmt: v => Math.round(v).toLocaleString(), yMin: null });
       Charts.timeChart(el, { title: "Threads", x: r.t, height: 110, series: [{ label: "Threads", values: r.threads, color: s(0) }], fmt: v => Charts.fmtNum(v, 0), yMin: null });
       if (r.diskFree.some(v => v != null))
-        Charts.timeChart(el, { title: "Free disk space", unit: "GB on the game's drive", unitShort: "GB", x: r.t, height: 110, series: [{ label: "Free", values: r.diskFree, color: s(0) }] });
+        Charts.timeChart(el, { title: "Free disk space", unit: "GB, game drive", unitShort: "GB", x: r.t, height: 110, series: [{ label: "Free", values: r.diskFree, color: s(0) }] });
       const kids = Object.keys(r.children);
       if (kids.length)
         Charts.timeChart(el, { title: "Child processes: memory", unit: "MB", unitShort: "MB", x: r.t, height: 130,
@@ -281,23 +276,23 @@
     }
 
     if (Object.keys(c.sections).length || Object.keys(c.metrics).length) {
-      group("From other mods", "Reported by mods through Canary's API.");
+      group("From mods");
       if (Object.keys(c.sections).length)
-        Charts.timeChart(el, { title: "Mod sections", unit: "ms per second", unitShort: "ms/s", x: c.t, series: topSeries(c.sections), height: 170 });
+        Charts.timeChart(el, { title: "Mod sections", unit: "ms/s", unitShort: "ms/s", x: c.t, series: topSeries(c.sections), height: 170 });
       const metrics = Object.keys(c.metrics).slice(0, 12);
       for (const k of metrics) Charts.timeChart(el, { title: k, unit: "metric", x: c.t, height: 110, series: [{ label: k, values: c.metrics[k], color: s(0) }], yMin: null });
       if (Object.keys(c.metrics).length > 12) {
         const p = document.createElement("p"); p.className = "muted";
-        p.textContent = `${Object.keys(c.metrics).length - 12} more metrics are in the Mods section's table.`;
+        p.textContent = `${Object.keys(c.metrics).length - 12} more in the Mods table.`;
         el.appendChild(p);
       }
     }
   }
 
-  // ---- Range, cursor, map -------------------------------------------------------------------------------------
+  // Range, cursor, map
   function rangeText() {
     const all = range[0] === M.tMin && range[1] === M.tMax;
-    $("range-text").innerHTML = `${all ? "Showing everything" : "Zoomed to"}: <strong>${esc(Time.fmt(range[0]))}</strong> to <strong>${esc(Time.fmt(range[1]))}</strong> (${esc(Time.duration(range[1] - range[0]))}), ${esc(Time.label(range[0]))}`;
+    $("range-text").innerHTML = `${all ? "All" : "Zoomed"}: <strong>${esc(Time.fmt(range[0]))}</strong> to <strong>${esc(Time.fmt(range[1]))}</strong> (${esc(Time.duration(range[1] - range[0]))}), ${esc(Time.label(range[0]))}`;
     $("reset-zoom").disabled = all;
   }
 
@@ -333,13 +328,20 @@
   $("raw-filter").addEventListener("input", () => Views.rawView(true));
   $("raw-more").addEventListener("click", () => Views.moreRaw());
 
+  const tabs = [...document.querySelectorAll("#nav a")];
+  const spy = new IntersectionObserver(entries => {
+    for (const e of entries) if (e.isIntersecting)
+      tabs.forEach(a => a.classList.toggle("active", a.hash === "#" + e.target.id));
+  }, { rootMargin: "-40% 0px -55% 0px" });
+  tabs.forEach(a => spy.observe(document.querySelector(a.hash)));
+
   let resizeTimer = null;
   new ResizeObserver(() => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => { if (M) { Charts.resize(); Views.drawMap(); } }, 100);
   }).observe($("main"));
 
-  // ---- CSV export ---------------------------------------------------------------------------------------------
+  // CSV export
   $("csv-btn").addEventListener("click", () => {
     const samples = M.samples.filter(s => s.t >= range[0] && s.t <= range[1]);
     const modules = Object.keys(M.cols.modules);

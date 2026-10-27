@@ -9,9 +9,7 @@ using Alta.Networking;
 
 namespace Canary.Recording;
 
-// CPU, memory, disk and network for the server process, the processes it started, the machine and (on a
-// Linux host running the server through Wine) its container, every ResourceSeconds. Sampled on a timer thread, so none of it costs the server frame time; the record is
-// handed to the main thread to be added like everything else.
+// Resource readings on a timer thread, handed to the main thread to record.
 internal static class ResourceMonitor
 {
     private static readonly ConcurrentQueue<ResourceRecord> Ready = new();
@@ -39,7 +37,7 @@ internal static class ResourceMonitor
         public bool Seen;
     }
 
-    // Main thread: the game folder's drive is looked up here.
+    // Main thread (Unity API).
     public static void Start()
     {
         _diskPath = UnityEngine.Application.dataPath;
@@ -68,7 +66,7 @@ internal static class ResourceMonitor
             Try(() => ReadDisk(machine));
             if (LinuxHost.HasCgroup && LinuxHost.Container != null)
             {
-                // Inside a container, the network namespace is the container's own; that's where it belongs.
+                // The network namespace is the container's own.
                 record.Container = new ContainerResources { Kind = LinuxHost.Container };
                 Try(() => ReadContainer(record.Container, seconds));
                 Try(() => ReadLinuxNetwork(seconds, (rx, tx) => (record.Container.NetRxKBps, record.Container.NetTxKBps) = (rx, tx)));
@@ -81,7 +79,7 @@ internal static class ResourceMonitor
             record.TotalCpuPct = Round((record.CpuPct ?? 0) + (record.Children?.Sum(c => c.CpuPct ?? 0) ?? 0));
             record.TotalMemMb = Round((record.MemMb ?? 0) + (record.Children?.Sum(c => c.MemMb ?? 0) ?? 0));
 
-            // The first pass only has totals to diff against later.
+            // The first pass only primes the deltas.
             if (_primed) Ready.Enqueue(record);
             _primed = true;
         }
@@ -103,11 +101,11 @@ internal static class ResourceMonitor
         if (Native.MemoryInfo(self, out var memory))
         {
             record.MemMb = Mb(memory.WorkingSetSize);
-            // Wine leaves private usage at zero; a zero is "not known" there, not "none".
+            // Wine leaves this at zero.
             if (!LinuxHost.Available || memory.PrivateUsage != UIntPtr.Zero) record.PrivateMb = Mb(memory.PrivateUsage);
         }
         if (Native.GetProcessHandleCount(self, out var handles) && (handles > 0 || !LinuxHost.Available)) record.Handles = (int)handles;
-        // Wine answers GetProcessIoCounters with zeros, so on Linux the kernel's own count is used.
+        // Wine returns zeros here.
         ulong? read = null, write = null;
         if (LinuxHost.Available)
         {
@@ -153,7 +151,7 @@ internal static class ResourceMonitor
         (_lastRx, _lastTx, _haveInterfaces) = (totals.Rx, totals.Tx, true);
     }
 
-    // Everything descended from the server process (crash handlers, anything a mod launched).
+    // Crash handlers, anything a mod launched.
     private static void ReadChildren(ResourceRecord record, double seconds)
     {
         var processes = Native.Processes();
@@ -183,8 +181,7 @@ internal static class ResourceMonitor
             }
             child.Seen = true;
             var entry = new ChildProcess { Pid = (int)p.Pid, Name = p.Name, Threads = (int)p.Threads };
-            // Wine answers GetProcessTimes for another process with the caller's own times, so a child's CPU
-            // is only known on Windows (in a container, the container's total covers it instead).
+            // Wine returns our own times for other processes.
             if (!LinuxHost.Available && Native.GetProcessTimes(child.Handle, out _, out _, out var kernel, out var user))
             {
                 var cpu = kernel + user;
@@ -202,8 +199,7 @@ internal static class ResourceMonitor
         if (list.Count > 0) record.Children = list;
     }
 
-    // The game's own transport counters: what it sent to players, and packets each way. It doesn't count
-    // bytes received.
+    // The game doesn't count bytes received.
     private static void ReadGameNetwork(ResourceRecord record, double seconds)
     {
         var transport = Socket.Current?.TransportSocket;
@@ -211,7 +207,7 @@ internal static class ResourceMonitor
         int outBytes = transport.OutgoingBytesTotal, outPackets = transport.OutgoingPacketsTotal, inPackets = transport.IncomingPacketsTotal;
         if (_haveGameNet)
         {
-            // unchecked: the counters are ints and wrap after 2 GB.
+            // The counters are ints and wrap.
             record.GameOutKBps = Round(unchecked((uint)(outBytes - _lastOutBytes)) / 1024.0 / seconds);
             record.GamePacketsOutPerSec = Round(unchecked((uint)(outPackets - _lastOutPackets)) / seconds);
             record.GamePacketsInPerSec = Round(unchecked((uint)(inPackets - _lastInPackets)) / seconds);
@@ -236,7 +232,7 @@ internal static class ResourceMonitor
         machine.MemUsedMb = Round((status.ullTotalPhys - status.ullAvailPhys) / 1048576.0);
     }
 
-    // Every network interface that's up, loopback excluded: the whole machine, not just the game.
+    // The whole machine, loopback excluded.
     private static void ReadInterfaces(MachineResources machine, double seconds)
     {
         long rx = 0, tx = 0;
@@ -262,7 +258,7 @@ internal static class ResourceMonitor
         machine.DiskTotalGb = Round(total / 1073741824.0);
     }
 
-    // CPU time (100 ns ticks) over a wall-clock interval -> % of the whole machine, and cores' worth busy.
+    // 100 ns ticks -> % of the machine, and cores busy.
     private static (double? Pct, double? Cores) CpuShare(long ticks, double seconds)
     {
         if (seconds <= 0) return (null, null);
@@ -275,8 +271,7 @@ internal static class ResourceMonitor
 
     private static readonly HashSet<string> Failed = new();
 
-    // One reading failing (Wine without that call, a child that exited) mustn't stop the rest. Each kind of
-    // failure is logged once.
+    // A missing reading mustn't stop the rest. Each failure is logged once.
     private static void Try(Action read)
     {
         try

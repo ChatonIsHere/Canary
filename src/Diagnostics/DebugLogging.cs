@@ -7,12 +7,11 @@ using NLog.Targets;
 
 namespace Canary.Diagnostics;
 
-// `canary debug on`: turns Trace logging on for loggers matching a pattern, for a limited time. The game's
-// NLog.config already writes Debug and up to its log file and server console, and leaves Trace off because
-// it's expensive, so a debug session adds only the Trace level and switches itself off again.
+// `canary debug on`: temporary Trace logging. The game's config already logs Debug and up, and leaves
+// Trace off because it's expensive.
 internal static class DebugLogging
 {
-    // The game's own log file and server console, as named in its NLog.config.
+    // From the game's NLog.config.
     private static readonly string[] TargetNames = ["logFile", "ServerConsole"];
     public const int MaxMinutes = 120;
 
@@ -78,10 +77,10 @@ internal static class DebugLogging
     {
         var targets = TargetNames.Select(config.FindTargetByName).Where(t => t != null).ToList();
         if (targets.Count == 0) return null;
-        // Trace only: the existing "*" rule already sends Debug and up, and a wider rule would log those twice.
+        // Trace only; Debug and up are already logged.
         var rule = new LoggingRule(pattern, LogLevel.Trace, LogLevel.Trace, targets[0]);
         foreach (var target in targets.Skip(1)) rule.Targets.Add(target);
-        // First, so a final rule earlier in the file can't swallow it.
+        // First, so an earlier final rule can't swallow it.
         config.LoggingRules.Insert(0, rule);
         LogManager.ReconfigExistingLoggers();
         return rule;
@@ -94,7 +93,7 @@ internal static class DebugLogging
         LogManager.ReconfigExistingLoggers();
     }
 
-    // A reload of NLog.config replaces every rule, ours included.
+    // A config reload drops our rules.
     private static void Reapply(LoggingConfiguration config)
     {
         if (config == null) return;

@@ -3,8 +3,7 @@ using UnityEngine.Profiling;
 
 namespace Canary.Recording;
 
-// Mono's Process.WorkingSet64 reads 0 on Windows, so the working set comes from the OS directly (Wine
-// implements the same call); anywhere it's missing falls back to Unity's own figure.
+// Mono's Process.WorkingSet64 is always 0 on Windows.
 internal static class ProcessMemory
 {
     private static bool _nativeFailed;
@@ -20,7 +19,7 @@ internal static class ProcessMemory
             }
             catch (Exception)
             {
-                // Not Windows or Wine.
+                // Neither Windows nor Wine.
             }
             _nativeFailed = true;
         }

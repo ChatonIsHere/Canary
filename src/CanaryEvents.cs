@@ -4,11 +4,8 @@ using Canary.Recording;
 
 namespace Canary;
 
-// Everything Canary records, as it's recorded. Two audiences:
-//  - other mods subscribe to the C# events below;
-//  - external tools (panels, bots) subscribe over the server's websocket console to the Canary* console
-//    events, the same way they subscribe to the game's PlayerJoined. Nothing is serialized for a console
-//    event unless something is subscribed to it.
+// C# events for mods, and Canary* console events for websocket subscribers. A console event is only
+// serialized when something's subscribed.
 public static class CanaryEvents
 {
     public static event Action<Sample> Sample;
@@ -52,7 +49,7 @@ public static class CanaryEvents
         }
     }
 
-    // One broken subscriber mustn't stop the others, or Canary's own recording.
+    // A throwing subscriber mustn't break the rest.
     private static void Fire<T>(Action<T> handlers, T record)
     {
         if (handlers == null) return;

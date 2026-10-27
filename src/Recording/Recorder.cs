@@ -11,8 +11,7 @@ using UnityEngine;
 
 namespace Canary.Recording;
 
-// Runs on the main thread from CanaryMod.OnUpdate. Keeps the last BufferMinutes of records in memory (the
-// always-on "instant replay"), and also streams them to disk while a recording is running.
+// Main thread. Keeps the last BufferMinutes of records, and writes them out while recording.
 internal static class Recorder
 {
     private static readonly Queue<Record> Buffer = new();
@@ -44,7 +43,7 @@ internal static class Recorder
         Active = true;
         StartedAt = UnixMs.Now;
         FrameClock.Start();
-        // Loading the world is one long series of spikes, so they only count once the server is up.
+        // World loading is one long spike.
         GeneralGameEvents.ServerStarted += () =>
         {
             _serverStarted = true;
@@ -125,8 +124,7 @@ internal static class Recorder
     public static int BufferCount => Buffer.Count;
     public static long BufferOldest => Buffer.Count > 0 ? Buffer.Peek().Time : 0;
 
-    // A recording starts with what's already in the buffer, so it includes the run-up to whatever made
-    // someone start it.
+    // Starts with the buffer, so it includes the run-up.
     public static RecordingSession StartRecording(string name)
     {
         if (Recording != null) return null;
@@ -144,7 +142,7 @@ internal static class Recorder
         return recording;
     }
 
-    // Public API, callable from any thread.
+    // Any thread.
     public static void AddSection(string name, long elapsedTicks)
     {
         var ms = elapsedTicks * 1000.0 / Stopwatch.Frequency;
@@ -203,9 +201,8 @@ internal static class Recorder
         Add(sample);
     }
 
-    // The game times each of its shared update modules on every frame, whatever IsProfiling says, into an
-    // AverageNumber it only exposes as an average per call. The total is the useful figure (ms spent in that
-    // module this second), so it's read from the private field. Modules that cost nothing are left out.
+    // The game times its update modules every frame whatever IsProfiling says, but only exposes an
+    // average per call; the per-second total comes from the private field.
     private static Dictionary<string, float> ReadUpdateModules()
     {
         if (!CanaryConfig.RecordUpdateModules || DurationField == null) return null;
@@ -233,7 +230,7 @@ internal static class Recorder
             Entities = NetworkEntity.SpawnedCount,
         });
 
-        // One console line per 10 seconds at most; a bad minute shouldn't bury the log.
+        // At most one console line per 10 s.
         if (now < _nextSpikeLog)
         {
             _unloggedSpikes++;

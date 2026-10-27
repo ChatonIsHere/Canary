@@ -5,7 +5,7 @@ using MelonLoader.Utils;
 
 namespace Canary;
 
-// UserData/MelonPreferences.cfg, [Canary] section. Read live, so an edit applies once MelonLoader reloads the file.
+// [Canary] in UserData/MelonPreferences.cfg.
 internal static class CanaryConfig
 {
     private static MelonPreferences_Entry<int> _bufferMinutes;
@@ -37,19 +37,18 @@ internal static class CanaryConfig
     public static void Init()
     {
         var category = MelonPreferences.CreateCategory("Canary", "Canary");
-        _bufferMinutes = category.CreateEntry("BufferMinutes", 10, description: "How many minutes of history the always-on buffer keeps in memory.");
-        _spikeMs = category.CreateEntry("SpikeMs", 200f, description: "A frame longer than this many milliseconds counts as a lag spike.");
-        _positionSeconds = category.CreateEntry("PositionSeconds", 5f, description: "How often player positions are recorded.");
-        _censusSeconds = category.CreateEntry("CensusSeconds", 60f, description: "How often every entity is counted by type and chunk.");
-        _recordUpdateModules = category.CreateEntry("RecordUpdateModules", true, description: "Record how many ms per second each of the game's update modules takes.");
-        _resourceSeconds = category.CreateEntry("ResourceSeconds", 5f, description: "How often CPU, memory, disk and network use is recorded (server, its child processes and the machine).");
-        _recordOnBoot = category.CreateEntry("RecordOnBoot", false, description: "Start recording to disk as soon as the server boots, as if 'canary record start boot' had been run.");
-        _compress = category.CreateEntry("Compress", true, description: "Gzip recordings and saved buffers (about 10x smaller).");
-        _rotateMinutes = category.CreateEntry("RotateMinutes", 60, description: "Start a new file (part) of a recording this often.");
-        _retentionDays = category.CreateEntry("RetentionDays", 14, description: "Delete recordings and reports older than this many days (0 keeps them forever).");
-        _maxStorageMb = category.CreateEntry("MaxStorageMb", 1024, description: "Delete the oldest recordings and reports once together they pass this many MB (0 for no limit).");
-        // MelonLoader only writes the file on a clean exit, which a server killed by its host never gets;
-        // writing it now means the settings are there to find and edit from the first boot.
+        _bufferMinutes = category.CreateEntry("BufferMinutes", 10, description: "Minutes of history kept in memory.");
+        _spikeMs = category.CreateEntry("SpikeMs", 200f, description: "Frames longer than this many ms are lag spikes.");
+        _positionSeconds = category.CreateEntry("PositionSeconds", 5f, description: "Seconds between player position records.");
+        _censusSeconds = category.CreateEntry("CensusSeconds", 60f, description: "Seconds between entity counts.");
+        _recordUpdateModules = category.CreateEntry("RecordUpdateModules", true, description: "Record the game's per-module update times.");
+        _resourceSeconds = category.CreateEntry("ResourceSeconds", 5f, description: "Seconds between CPU, memory, disk and network readings.");
+        _recordOnBoot = category.CreateEntry("RecordOnBoot", false, description: "Start recording to disk on every boot.");
+        _compress = category.CreateEntry("Compress", true, description: "Gzip recordings.");
+        _rotateMinutes = category.CreateEntry("RotateMinutes", 60, description: "Minutes per recording part.");
+        _retentionDays = category.CreateEntry("RetentionDays", 14, description: "Delete recordings and reports older than this (0 keeps them).");
+        _maxStorageMb = category.CreateEntry("MaxStorageMb", 1024, description: "Delete the oldest recordings and reports past this many MB (0 for no limit).");
+        // MelonLoader only saves on a clean exit, which a killed server never gets.
         category.SaveToFile(false);
     }
 }

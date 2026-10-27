@@ -8,11 +8,11 @@ using Canary.Recording;
 
 namespace Canary.Commands;
 
-[Module("canary", "Canary diagnostics: the always-on recording buffer, lag spikes, grouped errors and debug logging")]
+[Module("canary", "Canary diagnostics")]
 public static class CanaryCommands
 {
     [ServerOnly]
-    [Command("status", "Shows what Canary is recording, the last second's frame times and how many lag spikes and error groups it has seen.")]
+    [Command("status", "What's being recorded, the last second's frame times, spikes and errors.")]
     private static string Status()
     {
         var sb = new StringBuilder();
@@ -63,7 +63,7 @@ public static class CanaryCommands
     }
 
     [ServerOnly]
-    [Command("save", "Saves the always-on buffer (optionally only its last N minutes) to UserData/Canary/recordings.")]
+    [Command("save", "Saves the buffer (or its last N minutes) to UserData/Canary/recordings.")]
     private static string Save(int minutes = 0)
     {
         var records = Recorder.Snapshot(minutes);
@@ -73,7 +73,7 @@ public static class CanaryCommands
     }
 
     [ServerOnly]
-    [Command("mark", "Adds a note to the timeline, like 'starting the boss fight', so you can find that moment in a recording.")]
+    [Command("mark", "Adds a note to the timeline.")]
     private static string Mark(string text)
     {
         CanaryApi.Mark(text);
@@ -81,7 +81,7 @@ public static class CanaryCommands
     }
 
     [ServerOnly]
-    [Command("spikes", "Lists the most recent lag spikes in the buffer.")]
+    [Command("spikes", "Recent lag spikes.")]
     private static string Spikes(int count = 10)
     {
         var spikes = Recorder.Snapshot().OfType<SpikeRecord>().Reverse().Take(Math.Max(1, count)).ToList();
@@ -91,7 +91,7 @@ public static class CanaryCommands
     }
 
     [ServerOnly]
-    [Command("errors", "Lists the most frequent error groups since boot, with the mod each came from.")]
+    [Command("errors", "The most frequent error groups.")]
     private static string Errors(int count = 10)
     {
         var groups = ErrorGroups.All.OrderByDescending(g => g.Count).Take(Math.Max(1, count)).ToList();
@@ -101,7 +101,7 @@ public static class CanaryCommands
     }
 
     [ServerOnly]
-    [Command("error", "Shows one error group in full, stack trace included, by the id 'canary errors' prints.")]
+    [Command("error", "One error group in full, by its id.")]
     private static string Error(string id)
     {
         var g = ErrorGroups.All.FirstOrDefault(x => x.Id == id);
@@ -113,18 +113,18 @@ public static class CanaryCommands
     }
 
     [ServerOnly]
-    [Command("report", "Bundles the buffer, error groups, mod list and logs into one zip for a bug report.")]
+    [Command("report", "Zips the buffer, errors, mod list and logs for a bug report.")]
     private static string BugReport()
     {
         Report(ReportBundle.CreateAsync(), "Wrote the report to");
         return $"Writing a report to {ReportBundle.Directory}...";
     }
 
-    [Module("record", "A recording to disk with no time limit, alongside the always-on buffer")]
+    [Module("record", "Recording to disk")]
     public static class RecordCommands
     {
         [ServerOnly]
-        [Command("start", "Starts recording to UserData/Canary/recordings until 'canary record stop'. The name is optional.")]
+        [Command("start", "Records to UserData/Canary/recordings until stopped. The name is optional.")]
         private static string Start(string name = "")
         {
             if (Recorder.Recording is { } current) return $"Already recording to {current.Path}.";
@@ -134,7 +134,7 @@ public static class CanaryCommands
         }
 
         [ServerOnly]
-        [Command("stop", "Stops the recording.")]
+        [Command("stop", "Stops recording.")]
         private static string Stop()
         {
             var recording = Recorder.StopRecording();
@@ -144,15 +144,15 @@ public static class CanaryCommands
         }
     }
 
-    [Module("debug", "Temporary Trace logging, for when the normal logs don't say enough")]
+    [Module("debug", "Temporary Trace logging")]
     public static class DebugCommands
     {
         [ServerOnly]
-        [Command("on", "Turns Trace logging on for loggers matching a pattern (default * for all) for some minutes (default 10, max 120).")]
+        [Command("on", "Trace logging for loggers matching a pattern (default *), for N minutes (default 10, max 120).")]
         private static string On(string pattern = "*", int minutes = 10) => DebugLogging.On(pattern, minutes);
 
         [ServerOnly]
-        [Command("off", "Turns Trace logging off again, for one pattern or all of them.")]
+        [Command("off", "Turns it off, for one pattern or all.")]
         private static string Off(string pattern = "") => DebugLogging.Off(string.IsNullOrEmpty(pattern) ? null : pattern);
     }
 
@@ -165,7 +165,6 @@ public static class CanaryCommands
         });
     }
 
-    // A reading that isn't available on this platform is left out rather than printed blank.
     private static string Join(params string[] parts) => string.Join(", ", parts.Where(p => p != null)) + ".";
 
     private static string OneLine(string s)

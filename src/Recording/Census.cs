@@ -10,9 +10,8 @@ using HarmonyLib;
 
 namespace Canary.Recording;
 
-// Counts every networked entity by prefab and by chunk. Item buildup is a classic cause of server lag, and
-// a count that keeps growing is the early warning. It walks every entity on the main thread, so it times
-// itself: durationMs in the record is what the census cost.
+// Entities by prefab and chunk, to catch buildup. It walks every entity on the main thread, so it
+// records its own cost.
 internal static class Census
 {
     private const int TopChunks = 25;
@@ -59,10 +58,8 @@ internal static class Census
         });
     }
 
-    // Unity's name getters allocate a new string per call, so each prefab (by its hash, which every spawned
-    // copy shares) and each chunk is named once. Spawned names look like "4868 - Shield(Clone)"; the id and
-    // "(Clone)" are dropped so every shield counts together. Entities placed in the scene itself (chunks, spawn
-    // points) have no prefab, are nearly all unique and never pile up, so they're one line.
+    // Unity's name getters allocate, so names are cached by prefab hash. Scene-placed entities have no
+    // prefab and never pile up, so they're one line.
     private const string SceneEntities = "(placed in the scene)";
 
     private static string PrefabName(NetworkEntity entity)
