@@ -31,10 +31,26 @@ public static class CanaryCommands
         if (Recorder.LastResources is { } r)
         {
             var m = r.Machine;
-            sb.AppendLine($"Server process: CPU {r.CpuPct}% of the machine ({r.CpuCores} cores), {r.MemMb} MB, disk read {r.DiskReadKBps} / write {r.DiskWriteKBps} KB/s, "
-                          + $"game traffic out {r.GameOutKBps} KB/s; with child processes CPU {r.TotalCpuPct}%, {r.TotalMemMb} MB.");
-            sb.AppendLine($"Machine: CPU {m?.CpuPct}% of {m?.Cores} cores, memory {m?.MemUsedMb} of {m?.MemTotalMb} MB, network in {m?.NetRxKBps} / out {m?.NetTxKBps} KB/s, "
-                          + $"{m?.DiskFreeGb} of {m?.DiskTotalGb} GB free on the game's drive.");
+            var host = r.Container != null ? "host" : "machine";
+            sb.AppendLine("Server process: " + Join(
+                r.CpuPct is { } cpu ? $"CPU {cpu}% of the {host} ({r.CpuCores} cores)" : null,
+                r.MemMb is { } mem ? $"{mem} MB" : null,
+                r.DiskReadKBps is { } dr ? $"disk read {dr} / write {r.DiskWriteKBps} KB/s" : null,
+                r.GameOutKBps is { } go ? $"game traffic out {go} KB/s" : null,
+                r.Children != null ? $"with child processes CPU {r.TotalCpuPct}%, {r.TotalMemMb} MB" : null));
+            if (m != null)
+                sb.AppendLine($"{(r.Container != null ? "Host" : "Machine")}: " + Join(
+                    m.CpuPct is { } mc ? $"CPU {mc}% of {m.Cores} cores" : null,
+                    m.MemUsedMb is { } mu ? $"memory {mu} of {m.MemTotalMb} MB" : null,
+                    m.NetRxKBps is { } rx ? $"network in {rx} / out {m.NetTxKBps} KB/s" : null,
+                    m.DiskFreeGb is { } free ? $"{free} of {m.DiskTotalGb} GB free on the game's drive" : null));
+            if (r.Container is { } c)
+                sb.AppendLine($"{c.Kind} container: " + Join(
+                    c.CpuCores is { } cc ? $"CPU {cc} cores" + (c.CpuLimitCores is { } l ? $" of a {l}-core limit (throttled {c.ThrottledPct}% of the time)" : ", no limit") : null,
+                    c.MemMb is { } cm ? $"memory {cm}" + (c.MemLimitMb is { } ml ? $" of {ml}" : "") + " MB" : null,
+                    c.Processes is { } p ? $"{p} processes" : null,
+                    c.DiskReadKBps is { } cr ? $"disk read {cr} / write {c.DiskWriteKBps} KB/s" : null,
+                    c.NetRxKBps is { } crx ? $"network in {crx} / out {c.NetTxKBps} KB/s" : null));
         }
 
         var spikes = Recorder.Snapshot().OfType<SpikeRecord>().ToList();
@@ -148,6 +164,9 @@ public static class CanaryCommands
             else CanaryMod.Log.Msg($"{done} {t.Result}");
         });
     }
+
+    // A reading that isn't available on this platform is left out rather than printed blank.
+    private static string Join(params string[] parts) => string.Join(", ", parts.Where(p => p != null)) + ".";
 
     private static string OneLine(string s)
     {

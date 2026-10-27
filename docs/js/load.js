@@ -133,6 +133,9 @@ const Load = (() => {
       tMax: data.length ? data[data.length - 1].t : null,
       all,
     };
+    // Where the server ran, from the newest header that says.
+    m.environment = headers.map(h => h.environment).filter(Boolean).pop() || null;
+    m.inContainer = !!m.environment?.container || m.resources.some(r => r.container);
     m.settings = Object.assign({ spikeMs: 200, positionSeconds: 5, censusSeconds: 60, resourceSeconds: 5 },
       ...headers.map(h => h.settings || {}));
     m.gaps = findGaps(samples.map(s => s.t), 5000);
@@ -185,6 +188,8 @@ const Load = (() => {
       t: [], cpuPct: [], cpuCores: [], totalCpuPct: [], memMb: [], privateMb: [], totalMemMb: [], handles: [], threads: [],
       diskRead: [], diskWrite: [], gameOut: [], pktOut: [], pktIn: [],
       mCpu: [], mMemUsed: [], mMemTotal: [], rx: [], tx: [], diskFree: [], children: {},
+      cCores: [], cLimit: [], cThrottled: [], cMem: [], cMemLimit: [], cDiskRead: [], cDiskWrite: [], cRx: [], cTx: [], cProcs: [],
+      hasContainer: list.some(r => r.container),
     };
     const childNames = new Set();
     for (const r of list) for (const ch of r.children || []) childNames.add(ch.name);
@@ -202,6 +207,10 @@ const Load = (() => {
       const mc = r.machine || {};
       c.mCpu.push(v(mc.cpuPct)); c.mMemUsed.push(v(mc.memUsedMb)); c.mMemTotal.push(v(mc.memTotalMb));
       c.rx.push(v(mc.netRxKBps)); c.tx.push(v(mc.netTxKBps)); c.diskFree.push(v(mc.diskFreeGb));
+      const ct = r.container || {};
+      c.cCores.push(v(ct.cpuCores)); c.cLimit.push(v(ct.cpuLimitCores)); c.cThrottled.push(v(ct.throttledPct));
+      c.cMem.push(v(ct.memMb)); c.cMemLimit.push(v(ct.memLimitMb)); c.cDiskRead.push(v(ct.diskReadKBps));
+      c.cDiskWrite.push(v(ct.diskWriteKBps)); c.cRx.push(v(ct.netRxKBps)); c.cTx.push(v(ct.netTxKBps)); c.cProcs.push(v(ct.processes));
       for (const n of childNames) {
         const ch = gap ? null : (r.children || []).find(x => x.name === n);
         c.children[n].cpu.push(ch ? (ch.cpuPct ?? null) : null);

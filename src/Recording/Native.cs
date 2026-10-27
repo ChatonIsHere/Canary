@@ -75,6 +75,27 @@ internal static class Native
         public string Name { get; } = name;
     }
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string name);
+    [DllImport("kernel32.dll", CharSet = CharSet.Ansi)] private static extern IntPtr GetProcAddress(IntPtr module, string name);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate IntPtr WineGetVersion();
+
+    // Wine's ntdll exports wine_get_version; Windows' doesn't. Null on Windows.
+    public static string WineVersion()
+    {
+        try
+        {
+            var ntdll = GetModuleHandle("ntdll.dll");
+            var proc = ntdll == IntPtr.Zero ? IntPtr.Zero : GetProcAddress(ntdll, "wine_get_version");
+            if (proc == IntPtr.Zero) return null;
+            var get = (WineGetVersion)Marshal.GetDelegateForFunctionPointer(proc, typeof(WineGetVersion));
+            return Marshal.PtrToStringAnsi(get());
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
     [DllImport("kernel32.dll")] public static extern uint GetCurrentProcessId();
     [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);

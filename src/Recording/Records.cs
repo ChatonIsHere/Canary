@@ -35,6 +35,9 @@ public sealed class HeaderRecord : Record
     [JsonProperty("timeZoneName")] public string TimeZoneName { get; set; }
     [JsonProperty("daylightSaving")] public bool DaylightSaving { get; set; }
     [JsonProperty("settings")] public Dictionary<string, object> Settings { get; set; }
+    // What the server ran on: Windows, or Wine (and which container) on Linux. In a container the
+    // "machine" figures in resources records are the whole host.
+    [JsonProperty("environment")] public Dictionary<string, object> Environment { get; set; }
 
     // Main thread only (reads the game version).
     public static HeaderRecord Create(string kind, string name, int part)
@@ -62,6 +65,14 @@ public sealed class HeaderRecord : Record
             ["recordUpdateModules"] = CanaryConfig.RecordUpdateModules,
             ["resourceSeconds"] = CanaryConfig.ResourceSeconds,
         };
+        header.Environment = new Dictionary<string, object>
+        {
+            ["platform"] = LinuxHost.WineVersion != null ? $"Wine {LinuxHost.WineVersion}" : "Windows",
+            ["os"] = UnityEngine.SystemInfo.operatingSystem,
+            ["cores"] = System.Environment.ProcessorCount,
+        };
+        if (LinuxHost.Kernel != null) header.Environment["linuxKernel"] = LinuxHost.Kernel;
+        if (LinuxHost.Container != null) header.Environment["container"] = LinuxHost.Container;
         return header;
     }
 }
@@ -141,6 +152,27 @@ public sealed class ResourceRecord : Record
     [JsonProperty("totalCpuPct")] public double TotalCpuPct { get; set; }
     [JsonProperty("totalMemMb")] public double TotalMemMb { get; set; }
     [JsonProperty("machine")] public MachineResources Machine { get; set; }
+    [JsonProperty("container", NullValueHandling = NullValueHandling.Ignore)] public ContainerResources Container { get; set; }
+}
+
+// Only in a container (read from its cgroup): everything in it, Wine's own processes, Xvfb and any console
+// bridge included. cpuPct is of the container's CPU limit when it has one, else of the host's cores.
+// throttledPct is how much of the time the container wanted CPU and its limit made it wait.
+public sealed class ContainerResources
+{
+    [JsonProperty("kind")] public string Kind { get; set; }
+    [JsonProperty("cpuCores", NullValueHandling = NullValueHandling.Ignore)] public double? CpuCores { get; set; }
+    [JsonProperty("cpuPct", NullValueHandling = NullValueHandling.Ignore)] public double? CpuPct { get; set; }
+    [JsonProperty("cpuLimitCores", NullValueHandling = NullValueHandling.Ignore)] public double? CpuLimitCores { get; set; }
+    [JsonProperty("throttledPct", NullValueHandling = NullValueHandling.Ignore)] public double? ThrottledPct { get; set; }
+    [JsonProperty("throttles", NullValueHandling = NullValueHandling.Ignore)] public long? Throttles { get; set; }
+    [JsonProperty("memMb", NullValueHandling = NullValueHandling.Ignore)] public double? MemMb { get; set; }
+    [JsonProperty("memLimitMb", NullValueHandling = NullValueHandling.Ignore)] public double? MemLimitMb { get; set; }
+    [JsonProperty("diskReadKBps", NullValueHandling = NullValueHandling.Ignore)] public double? DiskReadKBps { get; set; }
+    [JsonProperty("diskWriteKBps", NullValueHandling = NullValueHandling.Ignore)] public double? DiskWriteKBps { get; set; }
+    [JsonProperty("netRxKBps", NullValueHandling = NullValueHandling.Ignore)] public double? NetRxKBps { get; set; }
+    [JsonProperty("netTxKBps", NullValueHandling = NullValueHandling.Ignore)] public double? NetTxKBps { get; set; }
+    [JsonProperty("processes", NullValueHandling = NullValueHandling.Ignore)] public int? Processes { get; set; }
 }
 
 public sealed class ChildProcess

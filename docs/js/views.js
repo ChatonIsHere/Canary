@@ -97,6 +97,14 @@ const Views = (() => {
       if (out.length) tile("Game traffic out", `${num(mean(out))} KB/s`, `peak ${num(Math.max(...out))} KB/s`);
       const free = res.map(r => r.machine?.diskFreeGb).filter(v => v != null);
       if (free.length) tile("Free disk", `${num(free[free.length - 1], 0)} GB`, "on the game's drive");
+      const ct = res.filter(r => r.container);
+      if (ct.length) {
+        const last = ct[ct.length - 1].container;
+        const cores = ct.map(r => r.container.cpuCores).filter(v => v != null);
+        tile(`${last.kind || "Container"} CPU`, cores.length ? `${num(mean(cores))} cores` : "–",
+          `${last.cpuLimitCores ? `limit ${num(last.cpuLimitCores)} cores` : "no CPU limit"}; ${last.processes ?? "?"} processes`);
+        tile(`${last.kind || "Container"} memory`, last.memMb != null ? `${num(last.memMb, 0)} MB` : "–", last.memLimitMb ? `of a ${num(last.memLimitMb, 0)} MB limit` : "no memory limit");
+      }
     }
     const players = M.players.filter(p => p.points.some(pt => inR(pt.t)));
     const peakPlayers = samples.reduce((m, s) => Math.max(m, s.players ?? 0), 0);
@@ -153,9 +161,17 @@ const Views = (() => {
 
     if (res.length) {
       const busy = res.filter(r => (r.machine?.cpuPct ?? 0) > 85);
-      if (busy.length) add("serious", `The whole machine's CPU was above 85% for about ${Time.duration(busy.length * M.settings.resourceSeconds * 1000)}${busy.length ? `, from ${Time.fmt(busy[0].t)}` : ""}. Something else on the machine may be competing with the server.`);
+      if (busy.length) add("serious", `The whole ${M.inContainer ? "host" : "machine"}'s CPU was above 85% for about ${Time.duration(busy.length * M.settings.resourceSeconds * 1000)}${busy.length ? `, from ${Time.fmt(busy[0].t)}` : ""}. Something else on the machine may be competing with the server.`);
+      const ct = res.filter(r => r.container);
+      const nearLimit = ct.filter(r => r.container.memLimitMb && r.container.memMb / r.container.memLimitMb > 0.9);
+      if (nearLimit.length) add("critical", `The container used over 90% of its ${num(nearLimit[0].container.memLimitMb, 0)} MB memory limit for about ${Time.duration(nearLimit.length * M.settings.resourceSeconds * 1000)}. At the limit, Linux kills the server.`);
+      const throttled = ct.filter(r => (r.container.throttledPct ?? 0) > 10);
+      if (throttled.length) {
+        const during = spikes.filter(s => throttled.some(r => Math.abs(r.t - s.t) <= M.settings.resourceSeconds * 1000)).length;
+        add("serious", `The container's CPU limit made it wait more than 10% of the time for about ${Time.duration(throttled.length * M.settings.resourceSeconds * 1000)}${during ? `; ${during} of the lag spikes happened then` : ""}. Raise the limit (cpus in docker-compose) or find what's using the CPU.`);
+      }
       const mem = res.filter(r => r.machine?.memUsedMb && r.machine?.memTotalMb && r.machine.memUsedMb / r.machine.memTotalMb > 0.9);
-      if (mem.length) add("serious", `The machine's memory was over 90% full for about ${Time.duration(mem.length * M.settings.resourceSeconds * 1000)}.`);
+      if (mem.length) add("serious", `The ${M.inContainer ? "host's" : "machine's"} memory was over 90% full for about ${Time.duration(mem.length * M.settings.resourceSeconds * 1000)}.`);
       const free = res.map(r => r.machine?.diskFreeGb).filter(v => v != null);
       if (free.length && free[free.length - 1] < 5) add("critical", `Only ${num(free[free.length - 1])} GB free on the game's drive. Saves and logs can fail when it fills up.`);
       const handles = res.filter(r => r.handles != null);
@@ -494,7 +510,9 @@ const Views = (() => {
   function filesView() {
     const rows = M.files.map(f => {
       const h = f.headers[0];
+      const env = f.headers.map(x => x.environment).find(Boolean);
       return {
+        ranOn: env ? `${env.platform}${env.container ? `, ${env.container}` : ""}` : "–",
         name: f.name, kind: h?.kind ?? (f.container === "zip" ? "report" : "unknown"), part: h?.part ?? "", records: f.records.length,
         from: f.tMin, to: f.tMax, zone: h?.utcOffsetMin != null ? `${h.timeZone} (${Time.offsetText(h.utcOffsetMin)}${h.daylightSaving ? ", daylight saving" : ""})` : "not recorded",
         version: h ? `Canary ${h.canary}, game ${h.game}` : "Canary 0.1.0 (no header)", notes: f.notes.join(" "),
@@ -508,6 +526,7 @@ const Views = (() => {
       { key: "fromUtc", label: "From (UTC)", sort: r => r.from, render: r => r.from ? esc(new Date(r.from).toISOString().replace("T", " ").slice(0, 19)) : "–" },
       { key: "to", label: "To", render: r => esc(Time.fmt(r.to)) },
       { key: "zone", label: "Server's time zone" },
+      { key: "ranOn", label: "Ran on" },
       { key: "version", label: "Written by" },
       { key: "notes", label: "Notes", render: r => `<span class="muted">${esc(r.notes)}</span>` },
     ], rows, { sortKey: "from", sortDir: "ascending" });
