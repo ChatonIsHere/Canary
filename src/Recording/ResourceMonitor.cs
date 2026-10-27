@@ -183,7 +183,9 @@ internal static class ResourceMonitor
             }
             child.Seen = true;
             var entry = new ChildProcess { Pid = (int)p.Pid, Name = p.Name, Threads = (int)p.Threads };
-            if (Native.GetProcessTimes(child.Handle, out _, out _, out var kernel, out var user))
+            // Wine answers GetProcessTimes for another process with the caller's own times, so a child's CPU
+            // is only known on Windows (in a container, the container's total covers it instead).
+            if (!LinuxHost.Available && Native.GetProcessTimes(child.Handle, out _, out _, out var kernel, out var user))
             {
                 var cpu = kernel + user;
                 if (child.LastCpu >= 0) entry.CpuPct = CpuShare(cpu - child.LastCpu, seconds).Pct;

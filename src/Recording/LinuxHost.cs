@@ -139,7 +139,9 @@ internal static class LinuxHost
             var max = LinuxHost.Read(_v2 + "/cpu.max")?.Trim().Split(' ');
             if (max is { Length: 2 } && max[0] != "max" && double.TryParse(max[0], out var quota) && double.TryParse(max[1], out var period) && period > 0)
                 r.LimitCores = quota / period;
-            r.MemBytes = Long(LinuxHost.Read(_v2 + "/memory.current"));
+            // Less the file cache the kernel can drop at any time (the game's files, once read), as docker stats
+            // counts it: what's left is what pushes the container towards its limit.
+            r.MemBytes = Long(LinuxHost.Read(_v2 + "/memory.current")) - (long)Field(LinuxHost.Read(_v2 + "/memory.stat") ?? "", "inactive_file ");
             r.MemLimitBytes = Long(LinuxHost.Read(_v2 + "/memory.max")); // "max" (no limit) parses as null
             foreach (var line in (LinuxHost.Read(_v2 + "/io.stat") ?? "").Split('\n'))
                 foreach (var part in line.Split(' '))
@@ -163,7 +165,8 @@ internal static class LinuxHost
             var quota = Long(LinuxHost.Read(cpuDir + "/cpu.cfs_quota_us"));
             var period = Long(LinuxHost.Read(cpuDir + "/cpu.cfs_period_us"));
             if (quota > 0 && period > 0) r.LimitCores = (double)quota / period;
-            r.MemBytes = Long(LinuxHost.Read("/sys/fs/cgroup/memory/memory.usage_in_bytes"));
+            r.MemBytes = Long(LinuxHost.Read("/sys/fs/cgroup/memory/memory.usage_in_bytes"))
+                         - (long)Field(LinuxHost.Read("/sys/fs/cgroup/memory/memory.stat") ?? "", "total_inactive_file ");
             var limit = Long(LinuxHost.Read("/sys/fs/cgroup/memory/memory.limit_in_bytes"));
             r.MemLimitBytes = limit is > 0 and < long.MaxValue / 2 ? limit : null; // "no limit" is a huge number
             foreach (var line in (LinuxHost.Read("/sys/fs/cgroup/blkio/blkio.throttle.io_service_bytes") ?? "").Split('\n'))
