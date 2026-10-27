@@ -34,8 +34,9 @@ internal static class Recorder
     private static int _unloggedSpikes;
 
     public static bool Active { get; private set; }
-    public static RecordingFile Recording { get; private set; }
+    public static RecordingSession Recording { get; private set; }
     public static Sample LastSample { get; private set; }
+    public static ResourceRecord LastResources { get; private set; }
     public static long StartedAt { get; private set; }
 
     public static void Start()
@@ -49,6 +50,8 @@ internal static class Recorder
             _serverStarted = true;
             _spikesFrom = FrameClock.Elapsed.TotalMilliseconds + 10_000;
         };
+        if (CanaryConfig.RecordOnBoot)
+            CanaryMod.Log.Msg($"RecordOnBoot is on: recording to {StartRecording("boot").Path}");
     }
 
     public static void Tick()
@@ -74,6 +77,11 @@ internal static class Recorder
 
         while (ErrorGroups.TryTakeNew(out var error))
             Add(error);
+        while (ResourceMonitor.TryTake(out var resources))
+        {
+            LastResources = resources;
+            Add(resources);
+        }
 
         if (now - _secondStart >= 1000)
         {
@@ -93,7 +101,7 @@ internal static class Recorder
             Census.Take(Add);
         }
 
-        Recording?.FlushIfDue();
+        Recording?.Tick();
     }
 
     public static void Add(Record record)
@@ -117,14 +125,18 @@ internal static class Recorder
     public static int BufferCount => Buffer.Count;
     public static long BufferOldest => Buffer.Count > 0 ? Buffer.Peek().Time : 0;
 
-    public static RecordingFile StartRecording(string name)
+    // A recording starts with what's already in the buffer, so it includes the run-up to whatever made
+    // someone start it.
+    public static RecordingSession StartRecording(string name)
     {
         if (Recording != null) return null;
-        Recording = RecordingFile.Create("recording", name);
-        return Recording;
+        var session = new RecordingSession(name);
+        foreach (var record in Buffer) session.Write(record);
+        Recording = session;
+        return session;
     }
 
-    public static RecordingFile StopRecording()
+    public static RecordingSession StopRecording()
     {
         var recording = Recording;
         Recording = null;

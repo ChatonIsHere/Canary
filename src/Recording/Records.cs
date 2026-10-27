@@ -17,6 +17,9 @@ public static class UnixMs
     public static long Now => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 }
 
+// First line of every file. Records only carry UTC timestamps; the header says what the server's clock read
+// and which zone it was in, so a viewer can show times as the server saw them as well as in its own zone.
+// A recording that crosses a daylight saving change gets a new header with each part.
 public sealed class HeaderRecord : Record
 {
     public override string Type => "header";
@@ -24,6 +27,43 @@ public sealed class HeaderRecord : Record
     [JsonProperty("game")] public string GameVersion { get; set; }
     [JsonProperty("kind")] public string Kind { get; set; }
     [JsonProperty("name", NullValueHandling = NullValueHandling.Ignore)] public string Name { get; set; }
+    [JsonProperty("part", NullValueHandling = NullValueHandling.Ignore)] public int? Part { get; set; }
+    [JsonProperty("utc")] public string Utc { get; set; }
+    [JsonProperty("serverTime")] public string ServerTime { get; set; }
+    [JsonProperty("utcOffsetMin")] public int UtcOffsetMinutes { get; set; }
+    [JsonProperty("timeZone")] public string TimeZone { get; set; }
+    [JsonProperty("timeZoneName")] public string TimeZoneName { get; set; }
+    [JsonProperty("daylightSaving")] public bool DaylightSaving { get; set; }
+    [JsonProperty("settings")] public Dictionary<string, object> Settings { get; set; }
+
+    // Main thread only (reads the game version).
+    public static HeaderRecord Create(string kind, string name, int part)
+    {
+        var header = new HeaderRecord
+        {
+            Kind = kind,
+            Name = string.IsNullOrEmpty(name) ? null : name,
+            Part = part > 0 ? part : null,
+            GameVersion = UnityEngine.Application.version,
+        };
+        var local = Canary.ServerTime.Of(header.Time);
+        header.Utc = DateTimeOffset.FromUnixTimeMilliseconds(header.Time).ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'");
+        header.ServerTime = local.ToString("yyyy-MM-dd'T'HH:mm:ss.fffzzz");
+        header.UtcOffsetMinutes = (int)local.Offset.TotalMinutes;
+        header.TimeZone = TimeZoneInfo.Local.Id;
+        header.TimeZoneName = TimeZoneInfo.Local.DisplayName;
+        header.DaylightSaving = TimeZoneInfo.Local.IsDaylightSavingTime(local);
+        header.Settings = new Dictionary<string, object>
+        {
+            ["spikeMs"] = CanaryConfig.SpikeMs,
+            ["bufferMinutes"] = CanaryConfig.BufferMinutes,
+            ["positionSeconds"] = CanaryConfig.PositionSeconds,
+            ["censusSeconds"] = CanaryConfig.CensusSeconds,
+            ["recordUpdateModules"] = CanaryConfig.RecordUpdateModules,
+            ["resourceSeconds"] = CanaryConfig.ResourceSeconds,
+        };
+        return header;
+    }
 }
 
 // One per second.
@@ -79,6 +119,49 @@ public sealed class SpikeRecord : Record
     [JsonProperty("gc")] public bool Gc { get; set; }
     [JsonProperty("players")] public int Players { get; set; }
     [JsonProperty("entities")] public int Entities { get; set; }
+}
+
+// Every ResourceSeconds. CPU percentages are of the whole machine (all cores = 100); cpuCores is how many
+// cores' worth the server kept busy. "total" is the server plus the processes it started.
+public sealed class ResourceRecord : Record
+{
+    public override string Type => "resources";
+    [JsonProperty("cpuPct", NullValueHandling = NullValueHandling.Ignore)] public double? CpuPct { get; set; }
+    [JsonProperty("cpuCores", NullValueHandling = NullValueHandling.Ignore)] public double? CpuCores { get; set; }
+    [JsonProperty("memMb", NullValueHandling = NullValueHandling.Ignore)] public double? MemMb { get; set; }
+    [JsonProperty("privateMb", NullValueHandling = NullValueHandling.Ignore)] public double? PrivateMb { get; set; }
+    [JsonProperty("handles", NullValueHandling = NullValueHandling.Ignore)] public int? Handles { get; set; }
+    [JsonProperty("threads", NullValueHandling = NullValueHandling.Ignore)] public int? Threads { get; set; }
+    [JsonProperty("diskReadKBps", NullValueHandling = NullValueHandling.Ignore)] public double? DiskReadKBps { get; set; }
+    [JsonProperty("diskWriteKBps", NullValueHandling = NullValueHandling.Ignore)] public double? DiskWriteKBps { get; set; }
+    [JsonProperty("gameOutKBps", NullValueHandling = NullValueHandling.Ignore)] public double? GameOutKBps { get; set; }
+    [JsonProperty("gamePacketsOut", NullValueHandling = NullValueHandling.Ignore)] public double? GamePacketsOutPerSec { get; set; }
+    [JsonProperty("gamePacketsIn", NullValueHandling = NullValueHandling.Ignore)] public double? GamePacketsInPerSec { get; set; }
+    [JsonProperty("children", NullValueHandling = NullValueHandling.Ignore)] public List<ChildProcess> Children { get; set; }
+    [JsonProperty("totalCpuPct")] public double TotalCpuPct { get; set; }
+    [JsonProperty("totalMemMb")] public double TotalMemMb { get; set; }
+    [JsonProperty("machine")] public MachineResources Machine { get; set; }
+}
+
+public sealed class ChildProcess
+{
+    [JsonProperty("pid")] public int Pid { get; set; }
+    [JsonProperty("name")] public string Name { get; set; }
+    [JsonProperty("threads")] public int Threads { get; set; }
+    [JsonProperty("cpuPct", NullValueHandling = NullValueHandling.Ignore)] public double? CpuPct { get; set; }
+    [JsonProperty("memMb", NullValueHandling = NullValueHandling.Ignore)] public double? MemMb { get; set; }
+}
+
+public sealed class MachineResources
+{
+    [JsonProperty("cores")] public int Cores { get; set; }
+    [JsonProperty("cpuPct", NullValueHandling = NullValueHandling.Ignore)] public double? CpuPct { get; set; }
+    [JsonProperty("memUsedMb", NullValueHandling = NullValueHandling.Ignore)] public double? MemUsedMb { get; set; }
+    [JsonProperty("memTotalMb", NullValueHandling = NullValueHandling.Ignore)] public double? MemTotalMb { get; set; }
+    [JsonProperty("netRxKBps", NullValueHandling = NullValueHandling.Ignore)] public double? NetRxKBps { get; set; }
+    [JsonProperty("netTxKBps", NullValueHandling = NullValueHandling.Ignore)] public double? NetTxKBps { get; set; }
+    [JsonProperty("diskFreeGb", NullValueHandling = NullValueHandling.Ignore)] public double? DiskFreeGb { get; set; }
+    [JsonProperty("diskTotalGb", NullValueHandling = NullValueHandling.Ignore)] public double? DiskTotalGb { get; set; }
 }
 
 public sealed class MarkRecord : Record
