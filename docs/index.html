@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Canary Viewer</title>
-<meta name="description" content="Open a Canary recording, saved buffer or report from an A Township Tale server and see what the server was doing: a timeline, lag spikes, players, entities, errors and more. Files never leave your browser.">
+<meta name="description" content="Open Canary recordings and reports from an A Township Tale server. Files stay in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono&display=swap">
 <link rel="stylesheet" href="vendor/uPlot.min.css">
 <link rel="stylesheet" href="viewer.css">
 </head>
@@ -13,44 +16,38 @@
   <div class="bar-row">
     <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>Canary Viewer</h1>
     <div class="bar-actions">
-      <label class="btn primary" for="file-input">Open files…</label>
+      <label class="btn primary" for="file-input">Open files</label>
       <input id="file-input" type="file" multiple accept=".jsonl,.gz,.zip,.json,.txt" hidden>
-      <button class="btn" id="demo-btn" type="button">Load demo data</button>
-      <label class="field" for="tz-select"><span>Show times in</span>
-        <select id="tz-select"></select>
-      </label>
-      <button class="btn ghost" id="theme-btn" type="button" aria-label="Switch colour theme">Theme: system</button>
+      <label class="field" for="tz-select"><span>Times in</span><select id="tz-select"></select></label>
+      <button class="btn ghost" id="theme-btn" type="button" aria-label="Switch theme">Theme: system</button>
     </div>
   </div>
   <div class="bar-row sub" id="range-row" hidden>
     <span id="range-text"></span>
-    <button class="btn small" id="reset-zoom" type="button">Show everything</button>
-    <button class="btn small ghost" id="csv-btn" type="button">Download samples as CSV</button>
+    <button class="btn small" id="reset-zoom" type="button">Zoom out</button>
+    <button class="btn small ghost" id="csv-btn" type="button">Export CSV</button>
   </div>
   <nav class="nav" id="nav" hidden>
     <a href="#overview">Overview</a>
     <a href="#timeline">Timeline</a>
     <a href="#spikes">Lag spikes</a>
-    <a href="#players">Players &amp; map</a>
+    <a href="#players">Players</a>
     <a href="#entities">Entities</a>
     <a href="#errors">Errors</a>
     <a href="#modules">Update modules</a>
     <a href="#mods">Mods</a>
-    <a href="#files">Files &amp; time zones</a>
-    <a href="#raw">Raw records</a>
+    <a href="#files">Files</a>
+    <a href="#raw">Raw</a>
   </nav>
 </header>
 
 <main id="main">
   <section id="welcome" class="welcome">
     <div class="drop" id="drop">
-      <h2>Open a Canary file</h2>
-      <p>Drop files here, or use <strong>Open files…</strong>. Any mix works: a recording's parts
-        (<code>recording-…-part001.jsonl.gz</code>, <code>…part002…</code>), a saved buffer
-        (<code>buffer-….jsonl.gz</code>) or a report (<code>canary-report-….zip</code>).
-        They're merged into one timeline.</p>
-      <p>They're in the server's <code>UserData/Canary/recordings</code> and <code>UserData/Canary/reports</code> folders.</p>
-      <p class="muted">Everything happens in your browser. Nothing is uploaded anywhere.</p>
+      <h2>Open Canary files</h2>
+      <p>Drop recordings, saved buffers or reports here, or use <strong>Open files</strong>. Several at once
+        are merged into one timeline.</p>
+      <p>They're in the server's <code>UserData/Canary</code> folder. Nothing is uploaded.</p>
     </div>
   </section>
 
@@ -61,15 +58,13 @@
     <h2>Overview</h2>
     <p class="panel-sub" id="overview-sub"></p>
     <div class="tiles" id="tiles"></div>
-    <h3>What stands out</h3>
+    <h3>Worth a look</h3>
     <ul class="findings" id="findings"></ul>
   </section>
 
   <section id="timeline" class="panel" hidden>
     <h2>Timeline</h2>
-    <p class="panel-sub">Every chart shares one time axis. Drag across any chart to zoom them all; double-click or
-      <em>Show everything</em> to zoom out. Hover to read values; the map follows your cursor.
-      Everything else on the page covers the time range you're zoomed to.</p>
+    <p class="panel-sub">Drag across a chart to zoom; double-click to zoom out. The rest of the page follows the zoom.</p>
     <div id="charts"></div>
   </section>
 
@@ -77,25 +72,24 @@
     <h2>Lag spikes</h2>
     <p class="panel-sub" id="spikes-sub"></p>
     <div class="grid2">
-      <figure class="card"><figcaption>How long the spikes lasted</figcaption><div id="spike-buckets"></div></figure>
-      <figure class="card"><figcaption id="spike-hours-cap">Spikes by hour of day</figcaption><div id="spike-hours"></div></figure>
+      <figure class="card"><figcaption>Duration</figcaption><div id="spike-buckets"></div></figure>
+      <figure class="card"><figcaption id="spike-hours-cap">By hour of day</figcaption><div id="spike-hours"></div></figure>
     </div>
     <div class="table-wrap"><table id="spike-table" class="data"></table></div>
   </section>
 
   <section id="players" class="panel" hidden>
-    <h2>Players &amp; map</h2>
+    <h2>Players</h2>
     <p class="panel-sub" id="players-sub"></p>
     <div class="map-layout">
-      <figure class="card map-card">
-        <figcaption>Top-down map (x east, z north, in metres). Lines are each player's path in the selected
-          time range; red rings are where players were during lag spikes.</figcaption>
+      <figure class="card">
+        <figcaption>Top-down, x east and z north. Red rings mark where players were during lag spikes.</figcaption>
         <div class="map-wrap"><canvas id="map" tabindex="0" aria-label="Map of player positions"></canvas>
           <div class="tip" id="map-tip" hidden></div></div>
         <div class="map-controls">
-          <label><input type="checkbox" id="map-spikes" checked> Lag spike locations</label>
+          <label><input type="checkbox" id="map-spikes" checked> Spikes</label>
           <label><input type="checkbox" id="map-paths" checked> Paths</label>
-          <label class="scrub"><span id="scrub-label">Position at</span>
+          <label class="scrub"><span id="scrub-label">At</span>
             <input type="range" id="map-scrub" min="0" max="1000" value="1000"></label>
         </div>
         <div class="legend" id="map-legend"></div>
@@ -107,24 +101,22 @@
   <section id="entities" class="panel" hidden>
     <h2>Entities</h2>
     <p class="panel-sub" id="entities-sub"></p>
-    <h3>By type, sorted by growth</h3>
+    <h3>By type</h3>
     <div class="table-wrap"><table id="census-table" class="data"></table></div>
-    <h3>Busiest chunks</h3>
+    <h3>By chunk</h3>
     <div class="table-wrap"><table id="chunk-table" class="data"></table></div>
   </section>
 
   <section id="errors" class="panel" hidden>
     <h2>Errors</h2>
     <p class="panel-sub" id="errors-sub"></p>
-    <figure class="card"><figcaption>New kinds of error, by where they came from</figcaption><div id="errors-by-mod"></div></figure>
+    <figure class="card"><figcaption>New kinds of error, by source</figcaption><div id="errors-by-mod"></div></figure>
     <div class="table-wrap"><table id="error-table" class="data"></table></div>
   </section>
 
   <section id="modules" class="panel" hidden>
     <h2>Update modules</h2>
-    <p class="panel-sub">The game runs most of its per-frame work through shared update modules and times each one.
-      These are milliseconds of main-thread time per second; a server running at 90 frames a second has about
-      1,000 ms a second to spend in total.</p>
+    <p class="panel-sub">Main-thread ms per second in each of the game's update modules.</p>
     <figure class="card"><figcaption>Average ms per second</figcaption><div id="module-bars"></div></figure>
     <div class="table-wrap"><table id="module-table" class="data"></table></div>
   </section>
@@ -137,9 +129,8 @@
   </section>
 
   <section id="files" class="panel" hidden>
-    <h2>Files &amp; time zones</h2>
-    <p class="panel-sub">Canary stores every time as UTC. Each file's header says what the server's clock read and
-      which zone it was in, which is what <em>Server time</em> uses. Your browser's zone is used for <em>Your time</em>.</p>
+    <h2>Files</h2>
+    <p class="panel-sub">Times are stored as UTC. Server time comes from each file's header.</p>
     <div class="table-wrap"><table id="file-table" class="data"></table></div>
     <pre class="summary" id="report-summary" hidden></pre>
   </section>
@@ -148,7 +139,7 @@
     <h2>Raw records</h2>
     <div class="raw-controls">
       <label class="field"><span>Type</span><select id="raw-type"></select></label>
-      <label class="field grow"><span>Contains</span><input id="raw-filter" type="search" placeholder="text to match"></label>
+      <label class="field grow"><span>Contains</span><input id="raw-filter" type="search"></label>
       <span class="muted" id="raw-count"></span>
     </div>
     <div class="raw" id="raw-list"></div>
@@ -162,7 +153,6 @@
 <script src="vendor/fflate.min.js"></script>
 <script src="js/time.js"></script>
 <script src="js/load.js"></script>
-<script src="js/demo.js"></script>
 <script src="js/charts.js"></script>
 <script src="js/views.js"></script>
 <script src="js/app.js"></script>

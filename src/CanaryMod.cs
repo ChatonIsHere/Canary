@@ -15,7 +15,6 @@ public class CanaryMod : MelonMod
 
     internal static MelonLogger.Instance Log { get; private set; }
 
-    // A dedicated server is the game started with /start_server; everything else is a player's client.
     public static bool IsServer { get; } =
         Environment.GetCommandLineArgs().Any(a => string.Equals(a, "/start_server", StringComparison.OrdinalIgnoreCase));
 
@@ -26,13 +25,13 @@ public class CanaryMod : MelonMod
 
         if (!IsServer)
         {
-            // The client addon (opt-in stats for the server) arrives in a later version; until then a client does nothing.
+            // No client side yet.
             Log.Msg("Client detected; Canary only records on a server for now.");
             return;
         }
 
         ErrorGroups.HookMelonLoader();
-        // NLog's configuration is only loaded once the game itself starts, after mods initialize.
+        // NLog isn't configured until the game starts.
         MelonEvents.OnApplicationLateStart.Subscribe(ErrorGroups.Install);
         Recorder.Start();
         ResourceMonitor.Start();

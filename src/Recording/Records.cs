@@ -4,8 +4,7 @@ using Newtonsoft.Json;
 
 namespace Canary.Recording;
 
-// One line of a recording (.jsonl). Every record carries its type and a unix-ms timestamp, so a viewer can
-// read the always-on buffer, a saved buffer and a long recording the same way.
+// One .jsonl line. Buffers and recordings share the format.
 public abstract class Record
 {
     [JsonProperty("type", Order = -3)] public abstract string Type { get; }
@@ -17,9 +16,8 @@ public static class UnixMs
     public static long Now => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 }
 
-// First line of every file. Records only carry UTC timestamps; the header says what the server's clock read
-// and which zone it was in, so a viewer can show times as the server saw them as well as in its own zone.
-// A recording that crosses a daylight saving change gets a new header with each part.
+// First line of every file. Records are UTC; this says which zone the server was in, and comes again
+// with each part in case daylight saving changes.
 public sealed class HeaderRecord : Record
 {
     public override string Type => "header";
@@ -35,11 +33,10 @@ public sealed class HeaderRecord : Record
     [JsonProperty("timeZoneName")] public string TimeZoneName { get; set; }
     [JsonProperty("daylightSaving")] public bool DaylightSaving { get; set; }
     [JsonProperty("settings")] public Dictionary<string, object> Settings { get; set; }
-    // What the server ran on: Windows, or Wine (and which container) on Linux. In a container the
-    // "machine" figures in resources records are the whole host.
+    // In a container, the "machine" figures are the host.
     [JsonProperty("environment")] public Dictionary<string, object> Environment { get; set; }
 
-    // Main thread only (reads the game version).
+    // Main thread (reads the game version).
     public static HeaderRecord Create(string kind, string name, int part)
     {
         var header = new HeaderRecord
@@ -126,14 +123,13 @@ public sealed class SpikeRecord : Record
 {
     public override string Type => "spike";
     [JsonProperty("ms")] public float Ms { get; set; }
-    // A garbage collection ran during the frame: the usual suspect for an otherwise unexplained spike.
+    // A GC ran in that frame.
     [JsonProperty("gc")] public bool Gc { get; set; }
     [JsonProperty("players")] public int Players { get; set; }
     [JsonProperty("entities")] public int Entities { get; set; }
 }
 
-// Every ResourceSeconds. CPU percentages are of the whole machine (all cores = 100); cpuCores is how many
-// cores' worth the server kept busy. "total" is the server plus the processes it started.
+// CPU % is of the whole machine. "total" adds the server's child processes.
 public sealed class ResourceRecord : Record
 {
     public override string Type => "resources";
@@ -155,9 +151,7 @@ public sealed class ResourceRecord : Record
     [JsonProperty("container", NullValueHandling = NullValueHandling.Ignore)] public ContainerResources Container { get; set; }
 }
 
-// Only in a container (read from its cgroup): everything in it, Wine's own processes, Xvfb and any console
-// bridge included. cpuPct is of the container's CPU limit when it has one, else of the host's cores.
-// throttledPct is how much of the time the container wanted CPU and its limit made it wait.
+// From the container's cgroup, so everything in it counts. cpuPct is of its limit when it has one.
 public sealed class ContainerResources
 {
     [JsonProperty("kind")] public string Kind { get; set; }
@@ -202,7 +196,7 @@ public sealed class MarkRecord : Record
     [JsonProperty("text")] public string Text { get; set; }
 }
 
-// The first time an error group is seen; later repeats only raise Sample.Errors.
+// Only the first of each group; repeats just count in Sample.Errors.
 public sealed class ErrorRecord : Record
 {
     public override string Type => "error";

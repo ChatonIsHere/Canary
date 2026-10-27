@@ -1,6 +1,4 @@
-// The timeline's charts: uPlot time series that share one x scale (zooming one zooms them all), one
-// crosshair, and the page's time zone. Each chart has one y axis; measures with different units get their
-// own chart rather than a second axis.
+// uPlot charts sharing one zoom, crosshair and time zone. One y axis each.
 "use strict";
 
 const Charts = (() => {
@@ -13,7 +11,7 @@ const Charts = (() => {
 
   const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const slot = i => css(`--s${i + 1}`);
-  const colors = () => ({ ink: css("--ink"), ink2: css("--ink-2"), muted: css("--muted"), grid: css("--grid"), axis: css("--axis"), surface: css("--surface") });
+  const colors = () => ({ ink: css("--ink"), ink2: css("--ink-2"), muted: css("--muted-foreground"), grid: css("--grid"), axis: css("--axis"), surface: css("--surface") });
 
   function fmtNum(v, digits = 2) {
     if (v == null || !isFinite(v)) return "–";
@@ -24,8 +22,7 @@ const Charts = (() => {
     return v.toFixed(digits);
   }
 
-  // Time ticks in 24-hour time, in the page's zone, with the date under the first tick and wherever the
-  // day changes.
+  // 24-hour ticks, with the date on the first and wherever the day changes.
   function timeTicks(u, splits, axisIdx, space, incr) {
     return splits.map((s, i) => {
       const ms = s * 1000;
@@ -103,10 +100,10 @@ ${day}` : time;
     const opts = baseOpts(width, cfg.height || 170, c);
     opts.axes = axes(cfg.unit, c, cfg.axisFmt);
     if (cfg.log) {
-      // Frame times span 10 ms to seconds; a log scale keeps both the normal frames and the spikes readable.
+      // Frames run from 10 ms to seconds.
       opts.scales.y = { distr: 3, log: 10 };
     } else {
-      // yMin: null fits the axis to the data (counts that never go near zero); otherwise it starts at zero.
+      // yMin: null fits the data; otherwise the axis starts at zero.
       opts.scales.y = {
         range: (u, min, max) => {
           if (min == null || max == null) return [0, 1];
@@ -158,14 +155,13 @@ ${day}` : time;
     return u;
   }
 
-  // A strip of event markers on the shared time axis: lag spikes, garbage collections, new errors, marks,
-  // gaps in the data, census runs.
+  // Spikes, GCs, new errors, marks, entity counts and gaps, on the shared time axis.
   function eventLane(container, lanes, tip) {
     const c = colors();
     const rowH = 22;
     const wrap = document.createElement("div");
     wrap.className = "chart";
-    wrap.innerHTML = `<div class="chart-head"><span class="chart-title">Events</span><span class="chart-note">Hover a marker for details. Rows: ${lanes.map(l => l.label).join(" · ")}</span></div><div class="chart-body"></div>`;
+    wrap.innerHTML = `<div class="chart-head"><span class="chart-title">Events</span><span class="chart-note">Hover a marker for details.</span></div><div class="chart-body"></div>`;
     container.appendChild(wrap);
     const body = wrap.querySelector(".chart-body");
     const width = Math.max(300, body.clientWidth || 800);
@@ -176,7 +172,7 @@ ${day}` : time;
       { show: true, size: 110, stroke: c.ink2, grid: { show: false }, ticks: { show: false }, font: "11px system-ui, sans-serif",
         splits: () => lanes.map((_, i) => i + 0.5), values: (u, splits) => splits.map(s => lanes[lanes.length - 1 - Math.floor(s)].label) },
     ];
-    // Row values count up from the bottom, so the first lane is drawn in the top row.
+    // Rows count up from the bottom, so the first lane is the top one.
     opts.scales.y = { range: () => [0, lanes.length] };
     opts.series = [{}, { label: "", points: { show: false }, stroke: "transparent" }];
     const drawn = [];

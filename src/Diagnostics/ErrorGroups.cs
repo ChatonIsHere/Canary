@@ -33,10 +33,8 @@ public sealed class ErrorGroup
     }
 }
 
-// Groups every Warn-or-worse log line by where it came from, so "NullReferenceException in SomeMod, 4,312
-// times" is one entry instead of 4,312 lines. Every log the game writes goes through NLog, and Unity's own
-// log (uncaught exceptions included) is forwarded into NLog by the game under the "Unhandled" logger, so
-// this one target sees everything exactly once.
+// Groups Warn-and-up log lines by origin. The game forwards Unity's log into NLog (as "Unhandled"), so
+// this one target sees everything once.
 internal static class ErrorGroups
 {
     private const string TargetName = "Canary";
@@ -51,7 +49,7 @@ internal static class ErrorGroups
 
     public static IEnumerable<ErrorGroup> All => Groups.Values;
 
-    // As early as possible, so errors from other mods' own startup are caught too.
+    // Early, to catch other mods' startup errors.
     public static void HookMelonLoader()
     {
         MelonLoader.MelonLogger.ErrorCallbackHandler += (section, text) => Safe(() => RecordMelon("Error", section, text));
@@ -61,7 +59,7 @@ internal static class ErrorGroups
     public static void Install()
     {
         AddTarget(LogManager.Configuration);
-        // The game's NLog.config has autoReload on, and a reload drops targets that aren't in the file.
+        // NLog.config has autoReload on, and a reload drops our target.
         LogManager.ConfigurationChanged += (_, args) =>
         {
             if (args.ActivatedConfiguration != null && args.ActivatedConfiguration.FindTargetByName(TargetName) == null)
@@ -91,7 +89,7 @@ internal static class ErrorGroups
     private static void Record(LogEventInfo e)
     {
         var unityType = e.HasProperties && e.Properties.TryGetValue("unity.logType", out var t) ? t as string : null;
-        // The game forwards every Unity log line as a Warn on "Unhandled"; plain Debug.Log lines aren't problems.
+        // Every Unity log line arrives as a Warn; plain Debug.Log lines aren't problems.
         if (unityType is "Log") return;
         var level = unityType is "Error" or "Assert" ? "Error" : e.Level.Name;
 
@@ -100,8 +98,7 @@ internal static class ErrorGroups
         if (exceptionType == null && e.LoggerName == "UnhandledExceptions" && e.Message != null)
             exceptionType = ExceptionTypeFromUnity(e);
 
-        // A structured template ("Player {0} left") is already the same for every occurrence; a pre-formatted
-        // message has its numbers and ids blanked so "entity 4123" and "entity 9981" land in one group.
+        // Templates already match across occurrences; formatted messages get numbers and ids blanked.
         var shape = e.Parameters is { Length: > 0 } ? e.Message : Hex.Replace(Numbers.Replace(e.FormattedMessage ?? "", "#"), "#");
         if (shape.Length > 300) shape = shape.Substring(0, 300);
         var key = $"{level}|{e.LoggerName}|{exceptionType}|{shape}|{TopFrame(e.Exception, stack)}";
@@ -117,8 +114,7 @@ internal static class ErrorGroups
         });
     }
 
-    // MelonLoader's own log: what mods write with MelonLogger, and the exceptions MelonLoader catches from a
-    // mod's callbacks. The section is the mod's name, so attribution comes for free.
+    // MelonLogger output, and exceptions MelonLoader catches from mods. The section is the mod's name.
     private static void RecordMelon(string level, string section, string text)
     {
         if (section == "Canary" || string.IsNullOrEmpty(text)) return;
@@ -145,7 +141,7 @@ internal static class ErrorGroups
         Interlocked.Increment(ref _sinceLastTake);
         if (!Groups.TryGetValue(key, out var group))
         {
-            // Past the cap, new kinds of error still count towards each sample's total, just ungrouped.
+            // Past the cap, errors still count, just ungrouped.
             if (Groups.Count >= MaxGroups) return;
             var created = false;
             group = Groups.GetOrAdd(key, k =>
@@ -185,7 +181,7 @@ internal static class ErrorGroups
         return paren > 0 ? line.Substring(0, paren) : line;
     }
 
-    // FNV-1a, so a group keeps the same short id across restarts.
+    // FNV-1a, so ids survive restarts.
     private static string Hash(string key)
     {
         var hash = 2166136261;
@@ -207,7 +203,7 @@ internal static class ErrorGroups
         }
         catch
         {
-            // Logging an error from inside the error hook would recurse.
+            // Logging from here would recurse.
         }
     }
 

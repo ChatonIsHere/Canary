@@ -6,9 +6,8 @@ using Canary.Diagnostics;
 
 namespace Canary.Recording;
 
-// Keeps recordings and reports from filling the disk: gzips parts a crash left plain, deletes anything older
-// than RetentionDays, then the oldest files until the folder is under MaxStorageMb. Runs on a worker thread
-// when a recording starts or rotates. The file being written is never touched.
+// Gzips crash leftovers, then deletes files past RetentionDays and the oldest past MaxStorageMb.
+// Never touches the open file.
 internal static class Retention
 {
     private static readonly object Lock = new();
@@ -29,7 +28,7 @@ internal static class Retention
     {
         lock (Lock)
         {
-            // Parts a crash left uncompressed (the open part is the one to keep).
+            // Crash leftovers.
             if (CanaryConfig.Compress && Directory.Exists(RecordingFile.Directory))
                 foreach (var plain in Directory.GetFiles(RecordingFile.Directory, "*.jsonl"))
                     if (!string.Equals(Path.GetFullPath(plain), Path.GetFullPath(keep), StringComparison.OrdinalIgnoreCase))

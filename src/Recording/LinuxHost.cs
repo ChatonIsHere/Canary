@@ -4,10 +4,8 @@ using System.Linq;
 
 namespace Canary.Recording;
 
-// A server run through Wine (the Docker, AMP and Pterodactyl images) is a Linux process, and Wine maps the
-// Linux filesystem to Z:. Some Windows calls answer wrongly there: per-process disk I/O reads zero, and
-// "the machine" is the whole host, whatever limits the container has. This reads the real figures from
-// /proc and the container's cgroup instead. Everything is null on Windows.
+// Under Wine (the Docker, AMP and Pterodactyl images) some Windows calls are wrong: process disk I/O is
+// zero and "the machine" is the host. This reads /proc and the container's cgroup through Z: instead.
 internal static class LinuxHost
 {
     public static string WineVersion { get; } = Native.WineVersion();
@@ -58,7 +56,6 @@ internal static class LinuxHost
         return null;
     }
 
-    // read_bytes / write_bytes: what this process actually read from and wrote to storage.
     public static (ulong Read, ulong Write)? ProcessIo()
     {
         var text = Read("/proc/self/io");
@@ -66,7 +63,7 @@ internal static class LinuxHost
         return (Field(text, "read_bytes:"), Field(text, "write_bytes:"));
     }
 
-    // Every interface but loopback. Inside a container this is the container's own network namespace.
+    // Loopback excluded. In a container this is its own network namespace.
     public static (long Rx, long Tx)? NetworkTotals()
     {
         var text = Read("/proc/net/dev");
@@ -106,7 +103,7 @@ internal static class LinuxHost
         public int? Processes;
     }
 
-    // The container's cgroup: v2 (one tree) on current Docker hosts, v1 (a tree per controller) on older ones.
+    // cgroup v2, or v1 on older hosts.
     private sealed class Cgroup
     {
         private string _v2;
@@ -118,7 +115,7 @@ internal static class LinuxHost
             var v2Line = self.Split('\n').FirstOrDefault(l => l.StartsWith("0::", StringComparison.Ordinal));
             if (v2Line != null)
             {
-                // With its own cgroup namespace (Docker's default on v2) the container's group is the root.
+                // With its own cgroup namespace (Docker's v2 default) the group is the root.
                 var path = v2Line.Substring(3).Trim();
                 foreach (var dir in new[] { "/sys/fs/cgroup" + (path == "/" ? "" : path), "/sys/fs/cgroup" })
                     if (Exists(dir + "/memory.current")) return new Cgroup { _v2 = dir };
@@ -139,8 +136,7 @@ internal static class LinuxHost
             var max = LinuxHost.Read(_v2 + "/cpu.max")?.Trim().Split(' ');
             if (max is { Length: 2 } && max[0] != "max" && double.TryParse(max[0], out var quota) && double.TryParse(max[1], out var period) && period > 0)
                 r.LimitCores = quota / period;
-            // Less the file cache the kernel can drop at any time (the game's files, once read), as docker stats
-            // counts it: what's left is what pushes the container towards its limit.
+            // Minus reclaimable file cache, as docker stats counts it.
             r.MemBytes = Long(LinuxHost.Read(_v2 + "/memory.current")) - (long)Field(LinuxHost.Read(_v2 + "/memory.stat") ?? "", "inactive_file ");
             r.MemLimitBytes = Long(LinuxHost.Read(_v2 + "/memory.max")); // "max" (no limit) parses as null
             foreach (var line in (LinuxHost.Read(_v2 + "/io.stat") ?? "").Split('\n'))

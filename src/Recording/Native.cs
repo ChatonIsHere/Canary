@@ -4,8 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace Canary.Recording;
 
-// The Windows calls behind ResourceMonitor. All of them are also implemented by Wine, which is how a
-// Linux-hosted server runs the game; a call that isn't available throws and the caller records nothing for it.
+// Windows calls for ResourceMonitor. Wine implements them too; a missing one throws.
 internal static class Native
 {
     public const uint ProcessQueryLimitedInformation = 0x1000;
@@ -79,7 +78,7 @@ internal static class Native
     [DllImport("kernel32.dll", CharSet = CharSet.Ansi)] private static extern IntPtr GetProcAddress(IntPtr module, string name);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate IntPtr WineGetVersion();
 
-    // Wine's ntdll exports wine_get_version; Windows' doesn't. Null on Windows.
+    // Only Wine's ntdll exports this.
     public static string WineVersion()
     {
         try
@@ -118,7 +117,6 @@ internal static class Native
         return K32GetProcessMemoryInfo(process, ref counters, counters.cb);
     }
 
-    // Every process on the machine, with its parent; for finding the server's own children.
     public static List<ProcessInfo> Processes()
     {
         var list = new List<ProcessInfo>();

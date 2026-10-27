@@ -6,8 +6,7 @@ using MelonLoader;
 
 namespace Canary.Diagnostics;
 
-// Works out which mod an error came from: the first stack frame (or the logger's class) that belongs to a
-// loaded mod or plugin. Anything else is "game". Only runs when a new error group is created.
+// The first stack frame (or logger class) from a loaded melon names the mod; anything else is "game".
 internal static class ModAttribution
 {
     private static readonly object Lock = new();
@@ -59,7 +58,7 @@ internal static class ModAttribution
     private static string ForTypeName(string typeName)
     {
         if (string.IsNullOrEmpty(typeName)) return null;
-        // Nested types print as Outer+Inner or Outer/Inner depending on where the name came from.
+        // Nested types come as Outer+Inner or Outer/Inner.
         var name = typeName.Replace('/', '+');
         return _types.TryGetValue(name, out var mod) ? mod : null;
     }

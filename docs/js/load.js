@@ -1,6 +1,4 @@
-// Reading Canary files and turning their records into one model. Recordings (.jsonl / .jsonl.gz, one or
-// many parts), saved buffers and report zips can be opened together; their records are merged, de-duplicated
-// (a recording starts with a copy of the buffer) and sorted.
+// Reads recordings, saved buffers and report zips, and merges them into one model.
 "use strict";
 
 const Load = (() => {
@@ -14,8 +12,7 @@ const Load = (() => {
     return out;
   }
 
-  // Decompresses as much as there is. A file cut short (copied while being written) still yields every
-  // complete line before the cut.
+  // A file cut short still gives every line before the cut.
   function gunzip(u8) {
     const chunks = [];
     let truncated = false;
@@ -70,7 +67,7 @@ const Load = (() => {
       };
       const buffer = text("buffer.jsonl");
       if (buffer != null) addLines(out, buffer);
-      else out.notes.push("No buffer.jsonl inside; is this a Canary report?");
+      else out.notes.push("Not a Canary report (no buffer.jsonl).");
       try { const e = text("errors.json"); if (e) out.extras.errorGroups = JSON.parse(e); } catch { out.notes.push("errors.json couldn't be read."); }
       try { const m = text("mods.json"); if (m) out.extras.mods = JSON.parse(m); } catch { out.notes.push("mods.json couldn't be read."); }
       const s = text("summary.txt"); if (s) out.extras.summary = s;
@@ -79,7 +76,7 @@ const Load = (() => {
     if (is(GZIP)) {
       out.container = "gzip";
       const { text, truncated } = gunzip(u8);
-      if (truncated) out.notes.push("The file ends early (copied while it was being written?); everything up to the cut was read.");
+      if (truncated) out.notes.push("Cut short; read up to the cut.");
       addLines(out, text);
       return out;
     }
@@ -91,14 +88,13 @@ const Load = (() => {
   function addLines(out, text) {
     const { records, bad, cutLast } = parseLines(text);
     out.records.push(...records);
-    if (bad) out.notes.push(`${bad} line(s) weren't Canary records and were skipped.`);
-    if (cutLast) out.notes.push("The last line was cut off and was skipped.");
+    if (bad) out.notes.push(`Skipped ${bad} line(s) that weren't records.`);
+    if (cutLast) out.notes.push("Last line cut off.");
     if (!records.length) out.notes.push("No Canary records found.");
   }
 
-  // ---- Model -----------------------------------------------------------------------------------------
+  // Model
 
-  // Merges every opened file into one model the views read from.
   function build(files) {
     const seen = new Set();
     const all = [];
@@ -108,7 +104,7 @@ const Load = (() => {
       f.tMin = data.length ? Math.min(...data.map(r => r.t)) : null;
       f.tMax = data.length ? Math.max(...data.map(r => r.t)) : null;
       for (const r of f.records) {
-        // One sample or resources record per moment; other types can share a millisecond.
+        // Recordings start with a copy of the buffer, so dedupe.
         const key = r.type === "sample" || r.type === "resources"
           ? `${r.type}|${r.t}` : `${r.type}|${r.t}|${JSON.stringify(r).length}`;
         if (seen.has(key)) continue;
@@ -133,7 +129,6 @@ const Load = (() => {
       tMax: data.length ? data[data.length - 1].t : null,
       all,
     };
-    // Where the server ran, from the newest header that says.
     m.environment = headers.map(h => h.environment).filter(Boolean).pop() || null;
     m.inContainer = !!m.environment?.container || m.resources.some(r => r.container);
     m.settings = Object.assign({ spikeMs: 200, positionSeconds: 5, censusSeconds: 60, resourceSeconds: 5 },
@@ -145,7 +140,6 @@ const Load = (() => {
     return m;
   }
 
-  // Stretches with no samples: the server was down, or the files don't cover that time.
   function findGaps(times, maxStep) {
     const gaps = [];
     for (let i = 1; i < times.length; i++)
@@ -153,8 +147,7 @@ const Load = (() => {
     return gaps;
   }
 
-  // uPlot wants columns: one x array (seconds) and one array per series. A null row is inserted in every
-  // gap so lines break there instead of joining across it.
+  // Columns for uPlot. A null row in each gap breaks the line there.
   function sampleColumns(samples, gaps) {
     const keys = { modules: new Set(), sections: new Set(), metrics: new Set() };
     for (const s of samples) for (const k of Object.keys(keys)) if (s[k]) for (const n of Object.keys(s[k])) keys[k].add(n);
@@ -171,7 +164,7 @@ const Load = (() => {
       c.heap.push(v(s.heapMb)); c.mem.push(v(s.memMb || null)); c.players.push(v(s.players));
       c.entities.push(v(s.entities)); c.errors.push(v(s.errors)); c.frames.push(v(s.frames));
       c.gc.push(isGap ? null : (s.gc ? s.gc[0] : null));
-      // The mod leaves out modules that took no time, so a missing module in a sample that has others is 0.
+      // Modules that took no time are left out of a sample.
       for (const n of keys.modules) c.modules[n].push(isGap ? null : (s.modules ? (s.modules[n] ?? 0) : null));
       for (const n of keys.sections) c.sections[n].push(isGap ? null : (s.sections ? (s.sections[n] ?? 0) : 0));
       for (const n of keys.metrics) c.metrics[n].push(isGap ? null : (s.metrics?.[n] ?? null));
@@ -225,7 +218,6 @@ const Load = (() => {
     return c;
   }
 
-  // Per player: their positions over time, from the positions records.
   function playerTracks(positions) {
     const players = new Map();
     for (const rec of positions) for (const p of rec.players || []) {
