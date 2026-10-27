@@ -30,6 +30,7 @@ const Demo = (() => {
       utc: new Date(start).toISOString(), serverTime: iso(start, offsetMin), utcOffsetMin: offsetMin,
       timeZone: "Eastern Standard Time", timeZoneName: "(UTC-05:00) Eastern Time (US & Canada)", daylightSaving: false,
       settings: { spikeMs: 200, bufferMinutes: 10, positionSeconds: 5, censusSeconds: 60, recordUpdateModules: true, resourceSeconds: 5 },
+      environment: { platform: "Wine 10.0", os: "Windows 10 (10.0.19045) 64bit", cores: 24, linuxKernel: "6.8.0-45-generic", container: "Docker" },
     });
 
     const names = ["Rowan", "Ash", "Kit", "Sage", "Wren"];
@@ -109,6 +110,18 @@ const Demo = (() => {
           gameOutKBps: +(online.length * (35 + r() * 15)).toFixed(2), gamePacketsOut: +(online.length * 60 + r() * 10).toFixed(2),
           gamePacketsIn: +(online.length * 45 + r() * 10).toFixed(2),
           children: [{ pid: 4242, name: "UnityCrashHandler64.exe", threads: 3, cpuPct: 0, memMb: 12 }],
+          container: (() => {
+            // A 2-core, 4 GB container: the big build pushes it into its CPU limit.
+            const want = cores + 0.15 + (busyBase ? 1.1 : 0);
+            const used = Math.min(2, want);
+            return {
+              kind: "Docker", cpuCores: +used.toFixed(2), cpuPct: +(used / 2 * 100).toFixed(2), cpuLimitCores: 2,
+              throttledPct: +Math.max(0, (want - 2) / want * 100).toFixed(2), throttles: want > 2 ? 40 : 0,
+              memMb: +(sample.memMb + 180).toFixed(2), memLimitMb: 4096,
+              diskReadKBps: +(r() * 40).toFixed(2), diskWriteKBps: +(6 + r() * 25).toFixed(2),
+              netRxKBps: +(online.length * 30 + r() * 8).toFixed(2), netTxKBps: +(online.length * 48 + r() * 10).toFixed(2), processes: 14,
+            };
+          })(),
           totalCpuPct: +(cores / 24 * 100).toFixed(2), totalMemMb: +(sample.memMb + 12).toFixed(2),
           machine: {
             cores: 24, cpuPct: +(4 + cores / 24 * 100 + r() * 3 + (t > start + 80 * 60000 && t < start + 88 * 60000 ? 84 : 0)).toFixed(2),

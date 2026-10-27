@@ -32,6 +32,23 @@ Resource readings are taken on a background thread, so they cost the server no f
 calls that Wine also implements, so they work on a Linux host running the server through Wine; any reading
 that isn't available is left out and logged once.
 
+### On Linux, in containers
+
+Canary works the same on a server run through Wine, as the Docker, AMP and Pterodactyl images do. Wine
+answers some of the Windows calls wrongly there, so Canary reads Linux's own figures instead (Wine shows the
+Linux filesystem as the `Z:` drive):
+
+- **The container itself**, from its cgroup: CPU against its CPU limit and how much of the time that limit
+  made it wait (throttling, a direct cause of lag), memory against its memory limit, disk I/O, process count
+  and its own network traffic. These go in a `container` section of each `resources` record.
+- **The server process's disk I/O** from `/proc/self/io`. Some kernels, Docker Desktop's WSL2 one included,
+  don't keep per-process I/O counts; it's left out there.
+- **"Machine" means the host.** CPU, memory and free disk outside the container describe the whole machine the
+  container runs on; the viewer labels them that way.
+
+A container's clock is UTC unless its `TZ` is set. Either way, the header of every file records which zone the
+server was in.
+
 ### Errors
 
 Every warning and error, whether it goes through the game's NLog logging, Unity or MelonLoader, is grouped by

@@ -63,6 +63,7 @@
       const rel = diff === 0 ? "the same as yours" : `${Time.duration(Math.abs(diff) * 60000).replace(" 00 min", "")} ${diff > 0 ? "ahead of" : "behind"} yours`;
       lines.push(`The server's clock was in <strong>${esc(h.timeZone)}</strong> (${Time.offsetText(h.utcOffsetMin)}${h.daylightSaving ? ", daylight saving" : ""}), ${rel} (${esc(Time.browserZone)}, ${Time.offsetText(Time.browserOffsetAt(at))}).`);
       if (offsets.length > 1) lines.push(`The server's offset changed during this data (${offsets.map(Time.offsetText).join(" → ")}), most likely a daylight saving change; server time follows it.`);
+      if (M.environment) lines.push(`The server ran on ${esc(M.environment.platform)}${M.environment.container ? ` in ${esc(M.environment.container)}` : ""}${M.environment.container ? `; a container's clock is UTC unless its <code>TZ</code> is set` : ""}.`);
       lines.push(`File names use UTC (the <code>Z</code> in <code>20261027T120000Z</code>), and the server console prints server time.`);
     } else {
       lines.push("These files don't record the server's time zone (they were written by Canary 0.1.0, before headers), so <em>Server time</em> isn't available.");
@@ -213,13 +214,37 @@
     }
 
     if (r.t.length) {
-      group("Resources", `Recorded every ${M.settings.resourceSeconds} s. CPU percentages are of the whole machine (all cores = 100%). "With child processes" adds anything the server started.`);
+      const host = M.inContainer ? "host" : "machine";
+      group("Resources", `Recorded every ${M.settings.resourceSeconds} s. CPU percentages are of the whole ${host} (all cores = 100%). "With child processes" adds anything the server started.`
+        + (M.inContainer ? ` The server ran in a ${M.environment?.container ? `${M.environment.container} container` : "container"}, so the "host" figures are the whole machine the container runs on, and the container charts show the container itself.` : ""));
+      if (r.hasContainer) {
+        const limit = r.cLimit.find(v => v != null);
+        const memLimit = r.cMemLimit.find(v => v != null);
+        Charts.timeChart(el, {
+          title: "Container CPU", unit: "cores busy", x: r.t, height: 160,
+          note: limit ? `The container may use ${Charts.fmtNum(limit)} cores (red line). At the limit it's made to wait: see throttling below.` : "No CPU limit is set on the container.",
+          threshold: limit ?? undefined, thresholdLabel: limit ? `limit ${Charts.fmtNum(limit)} cores` : "",
+          series: [{ label: "Container (everything in it)", values: r.cCores, color: s(0) }, { label: "Server process", values: r.cpuCores, color: s(1) }],
+        });
+        if (limit) Charts.timeChart(el, {
+          title: "CPU throttling", unit: "% of the time the container had to wait for its CPU limit", unitShort: "%", x: r.t, height: 120,
+          series: [{ label: "Throttled", values: r.cThrottled, color: s(0) }],
+        });
+        Charts.timeChart(el, {
+          title: "Container memory", unit: "MB", unitShort: "MB", x: r.t, height: 140,
+          note: memLimit ? `The container may use ${Math.round(memLimit).toLocaleString()} MB (red line); past it, Linux kills the biggest process, which is the server.` : "No memory limit is set on the container.",
+          threshold: memLimit ?? undefined, thresholdLabel: memLimit ? "limit" : "",
+          series: [{ label: "Container", values: r.cMem, color: s(0) }, { label: "Server process", values: r.memMb, color: s(1) }],
+        });
+        Charts.timeChart(el, { title: "Container disk I/O", unit: "KB per second", unitShort: "KB/s", x: r.t, height: 130,
+          series: [{ label: "Read", values: r.cDiskRead, color: s(0) }, { label: "Write", values: r.cDiskWrite, color: s(1) }] });
+      }
       Charts.timeChart(el, {
         title: "CPU", unit: "% of the whole machine", unitShort: "%", x: r.t, height: 170,
         series: [
           { label: "Server", values: r.cpuPct, color: s(0) },
           { label: "Server with child processes", values: r.totalCpuPct, color: s(1) },
-          { label: "Whole machine", values: r.mCpu, color: s(2) },
+          { label: `Whole ${host}`, values: r.mCpu, color: s(2) },
         ],
       });
       Charts.timeChart(el, {
@@ -231,16 +256,17 @@
         ],
       });
       if (r.mMemUsed.some(v => v != null))
-        Charts.timeChart(el, { title: "Machine memory", unit: "MB", unitShort: "MB", x: r.t, height: 140,
+        Charts.timeChart(el, { title: M.inContainer ? "Host memory" : "Machine memory", unit: "MB", unitShort: "MB", x: r.t, height: 140,
           series: [{ label: "Used", values: r.mMemUsed, color: s(0) }, { label: "Installed", values: r.mMemTotal, color: s(1) }] });
       Charts.timeChart(el, { title: "Server disk I/O", unit: "KB per second", unitShort: "KB/s", x: r.t, height: 140,
         series: [{ label: "Read", values: r.diskRead, color: s(0) }, { label: "Write", values: r.diskWrite, color: s(1) }] });
+      const net = r.hasContainer ? { rx: r.cRx, tx: r.cTx, who: "Container" } : { rx: r.rx, tx: r.tx, who: "Machine" };
       Charts.timeChart(el, { title: "Network", unit: "KB per second", unitShort: "KB/s", height: 160,
-        note: "Game traffic is what the server sent to players (the game doesn't count what it receives). The machine lines are every network interface on the machine.",
+        note: `Game traffic is what the server sent to players (the game doesn't count what it receives). The ${net.who.toLowerCase()} lines are every network interface ${r.hasContainer ? "inside the container" : "on the machine"}.`,
         x: r.t, series: [
           { label: "Game, sent", values: r.gameOut, color: s(0) },
-          { label: "Machine, received", values: r.rx, color: s(1) },
-          { label: "Machine, sent", values: r.tx, color: s(2) },
+          { label: `${net.who}, received`, values: net.rx, color: s(1) },
+          { label: `${net.who}, sent`, values: net.tx, color: s(2) },
         ] });
       Charts.timeChart(el, { title: "Game packets", unit: "per second", x: r.t, height: 130,
         series: [{ label: "Sent", values: r.pktOut, color: s(0) }, { label: "Received", values: r.pktIn, color: s(1) }] });

@@ -9,8 +9,8 @@ using Alta.Networking;
 
 namespace Canary.Recording;
 
-// CPU, memory, disk and network for the server process, the processes it started, and the machine, every
-// ResourceSeconds. Sampled on a timer thread, so none of it costs the server frame time; the record is
+// CPU, memory, disk and network for the server process, the processes it started, the machine and (on a
+// Linux host running the server through Wine) its container, every ResourceSeconds. Sampled on a timer thread, so none of it costs the server frame time; the record is
 // handed to the main thread to be added like everything else.
 internal static class ResourceMonitor
 {
@@ -30,6 +30,7 @@ internal static class ResourceMonitor
     private static bool _haveGameNet;
     private static long _lastRx, _lastTx;
     private static bool _haveInterfaces;
+    private static LinuxHost.CgroupReading _lastGroup;
 
     private sealed class Child
     {
@@ -64,8 +65,18 @@ internal static class ResourceMonitor
             Try(() => ReadGameNetwork(record, seconds));
             Try(() => ReadMachineCpu(machine));
             Try(() => ReadMachineMemory(machine));
-            Try(() => ReadInterfaces(machine, seconds));
             Try(() => ReadDisk(machine));
+            if (LinuxHost.HasCgroup && LinuxHost.Container != null)
+            {
+                // Inside a container, the network namespace is the container's own; that's where it belongs.
+                record.Container = new ContainerResources { Kind = LinuxHost.Container };
+                Try(() => ReadContainer(record.Container, seconds));
+                Try(() => ReadLinuxNetwork(seconds, (rx, tx) => (record.Container.NetRxKBps, record.Container.NetTxKBps) = (rx, tx)));
+            }
+            else if (LinuxHost.Available)
+                Try(() => ReadLinuxNetwork(seconds, (rx, tx) => (machine.NetRxKBps, machine.NetTxKBps) = (rx, tx)));
+            else
+                Try(() => ReadInterfaces(machine, seconds));
             record.Machine = machine;
             record.TotalCpuPct = Round((record.CpuPct ?? 0) + (record.Children?.Sum(c => c.CpuPct ?? 0) ?? 0));
             record.TotalMemMb = Round((record.MemMb ?? 0) + (record.Children?.Sum(c => c.MemMb ?? 0) ?? 0));
@@ -92,19 +103,54 @@ internal static class ResourceMonitor
         if (Native.MemoryInfo(self, out var memory))
         {
             record.MemMb = Mb(memory.WorkingSetSize);
-            record.PrivateMb = Mb(memory.PrivateUsage);
+            // Wine leaves private usage at zero; a zero is "not known" there, not "none".
+            if (!LinuxHost.Available || memory.PrivateUsage != UIntPtr.Zero) record.PrivateMb = Mb(memory.PrivateUsage);
         }
-        if (Native.GetProcessHandleCount(self, out var handles)) record.Handles = (int)handles;
-        if (Native.GetProcessIoCounters(self, out var io))
+        if (Native.GetProcessHandleCount(self, out var handles) && (handles > 0 || !LinuxHost.Available)) record.Handles = (int)handles;
+        // Wine answers GetProcessIoCounters with zeros, so on Linux the kernel's own count is used.
+        ulong? read = null, write = null;
+        if (LinuxHost.Available)
+        {
+            if (LinuxHost.ProcessIo() is { } linux) (read, write) = (linux.Read, linux.Write);
+        }
+        else if (Native.GetProcessIoCounters(self, out var io)) (read, write) = (io.ReadTransferCount, io.WriteTransferCount);
+        if (read is { } r && write is { } w)
         {
             if (_primed)
             {
-                record.DiskReadKBps = Round((io.ReadTransferCount - _lastRead) / 1024.0 / seconds);
-                record.DiskWriteKBps = Round((io.WriteTransferCount - _lastWrite) / 1024.0 / seconds);
+                record.DiskReadKBps = Round((r - _lastRead) / 1024.0 / seconds);
+                record.DiskWriteKBps = Round((w - _lastWrite) / 1024.0 / seconds);
             }
-            _lastRead = io.ReadTransferCount;
-            _lastWrite = io.WriteTransferCount;
+            (_lastRead, _lastWrite) = (r, w);
         }
+    }
+
+    private static void ReadContainer(ContainerResources container, double seconds)
+    {
+        var now = LinuxHost.ReadCgroup();
+        if (now == null) return;
+        var last = _lastGroup;
+        _lastGroup = now;
+        container.CpuLimitCores = now.LimitCores.HasValue ? Round(now.LimitCores.Value) : null;
+        if (now.MemBytes is { } mem) container.MemMb = Round(mem / 1048576.0);
+        if (now.MemLimitBytes is { } limit) container.MemLimitMb = Round(limit / 1048576.0);
+        container.Processes = now.Processes;
+        if (last == null || seconds <= 0) return;
+        var cores = (now.CpuUsec - last.CpuUsec) / 1e6 / seconds;
+        container.CpuCores = Round(cores);
+        container.CpuPct = Round(100.0 * cores / (now.LimitCores ?? Environment.ProcessorCount));
+        container.ThrottledPct = Round(Math.Min(100, 100.0 * (now.ThrottledUsec - last.ThrottledUsec) / 1e6 / seconds));
+        container.Throttles = now.Throttles - last.Throttles;
+        if (now.IoRead >= last.IoRead) container.DiskReadKBps = Round((now.IoRead - last.IoRead) / 1024.0 / seconds);
+        if (now.IoWrite >= last.IoWrite) container.DiskWriteKBps = Round((now.IoWrite - last.IoWrite) / 1024.0 / seconds);
+    }
+
+    private static void ReadLinuxNetwork(double seconds, Action<double?, double?> set)
+    {
+        if (LinuxHost.NetworkTotals() is not { } totals) return;
+        if (_haveInterfaces && totals.Rx >= _lastRx && totals.Tx >= _lastTx)
+            set(Round((totals.Rx - _lastRx) / 1024.0 / seconds), Round((totals.Tx - _lastTx) / 1024.0 / seconds));
+        (_lastRx, _lastTx, _haveInterfaces) = (totals.Rx, totals.Tx, true);
     }
 
     // Everything descended from the server process (crash handlers, anything a mod launched).
