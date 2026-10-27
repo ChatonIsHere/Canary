@@ -100,7 +100,7 @@
     Views.model = M;
     range = [M.tMin, M.tMax];
     Charts.clearZoom();
-    document.title = `${parsed.length === 1 ? parsed[0].name : `${parsed.length} files`} · Canary Viewer`;
+    document.title = `${parsed.length === 1 ? parsed[0].name : `${parsed.length} files`} · Canary`;
     $("welcome").hidden = true;
     for (const id of ["overview", "timeline", "spikes", "players", "entities", "errors", "modules", "mods", "files", "raw", "nav", "range-row"]) $(id).hidden = false;
     Views.initRaw();

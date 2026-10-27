@@ -3,7 +3,7 @@
 A MelonLoader mod that records what an A Township Tale server is doing, so when it lags, errors or
 falls over there's something to look at. Server only for now.
 
-Open recordings in the **[Canary Viewer](https://chatonishere.github.io/Canary/)**. Files stay in your
+Open recordings in the **[viewer](https://chatonishere.github.io/Canary/)**. Files stay in your
 browser.
 
 ## What it records

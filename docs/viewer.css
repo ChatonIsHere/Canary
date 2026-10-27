@@ -69,7 +69,6 @@ a { color: inherit; }
 .toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .toolbar select { height: 32px; font-size: 13px; }
 .brand { font-size: 20px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
-.brand-mark { width: 12px; height: 12px; border-radius: 50%; background: #eda100; }
 
 /* Tabs */
 .nav { display: flex; gap: 2px; overflow-x: auto; margin-bottom: 16px; padding: 3px; background: var(--muted); border-radius: var(--radius); scrollbar-width: none; }
