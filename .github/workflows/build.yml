@@ -1,0 +1,28 @@
+name: Build
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ChatonIsHere/att-stubs
+          path: att-stubs
+      - run: dotnet build -c Release "-p:GameDir=${{ github.workspace }}\att-stubs"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Canary
+          path: bin/Release/Canary.dll
+      # Releases main's <Version> if it hasn't been released yet.
+      - if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' Canary.csproj)
+          gh release view "v$v" > /dev/null 2>&1 || gh release create "v$v" bin/Release/Canary.dll --target "$GITHUB_SHA" --title "Canary $v" --generate-notes
