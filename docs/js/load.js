@@ -130,6 +130,8 @@ const Load = (() => {
       all,
     };
     m.environment = headers.map(h => h.environment).filter(Boolean).pop() || null;
+    m.serverHeader = headers.filter(h => h.server).pop() || null;
+    m.server = m.serverHeader?.server || null;
     m.inContainer = !!m.environment?.container || m.resources.some(r => r.container);
     m.settings = Object.assign({ spikeMs: 200, positionSeconds: 5, censusSeconds: 60, resourceSeconds: 5 },
       ...headers.map(h => h.settings || {}));

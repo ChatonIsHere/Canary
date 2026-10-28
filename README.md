@@ -14,7 +14,10 @@ for the server, its child processes, the machine and (under Wine) its container.
 by type and chunk. Plus every lag spike, and the first of each new error, tagged with the mod it came
 from.
 
-All times are UTC. Each file's header records the server's time zone.
+All times are UTC. Each file's header records the server's time zone, and what the server is: its name and
+settings, the versions of the game, MelonLoader, TavernLib and TavernLauncher (when it started the server),
+and its mods, including what TavernLib's mod manager installed. Without TavernLib, or with an older one,
+it records what it can.
 
 ## Commands
 
