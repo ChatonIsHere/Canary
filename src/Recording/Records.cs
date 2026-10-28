@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Canary.Recording;
 
@@ -35,6 +36,7 @@ public sealed class HeaderRecord : Record
     [JsonProperty("settings")] public Dictionary<string, object> Settings { get; set; }
     // In a container, the "machine" figures are the host.
     [JsonProperty("environment")] public Dictionary<string, object> Environment { get; set; }
+    [JsonProperty("server")] public JObject Server { get; set; }
 
     // Main thread (reads the game version).
     public static HeaderRecord Create(string kind, string name, int part)
@@ -70,6 +72,7 @@ public sealed class HeaderRecord : Record
         };
         if (LinuxHost.Kernel != null) header.Environment["linuxKernel"] = LinuxHost.Kernel;
         if (LinuxHost.Container != null) header.Environment["container"] = LinuxHost.Container;
+        header.Server = Diagnostics.ServerInfo.Build();
         return header;
     }
 }

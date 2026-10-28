@@ -126,6 +126,14 @@ const Views = (() => {
       const worst = spikes.reduce((a, b) => b.ms > a.ms ? b : a);
       add(worst.ms >= 1000 ? "critical" : "serious", `${spikes.length} lag spike(s). The worst was ${num(worst.ms, 0)} ms, at ${Time.fmt(worst.t)}.`);
       if (gcShare >= 0.5) add("serious", `${pct(gcShare * 100)} of spikes had a GC in the same frame. Memory churn is the likely cause.`);
+      const timer = M.server?.gcTimerSeconds;
+      const gcTimes = spikes.filter(s => s.gc).map(s => s.t);
+      if (timer && gcTimes.length >= 4) {
+        const steps = gcTimes.slice(1).map((t, i) => (t - gcTimes[i]) / 1000);
+        const typical = quantile(steps, 0.5);
+        if (Math.abs(typical - timer) <= timer * 0.15)
+          add("info", `The GC spikes come every ${int(typical)} s: the game forces a GC that often (garbage_collection_timer in server_settings.json).`);
+      }
       const withPlayers = spikes.filter(s => s.players > 0).length;
       if (withPlayers && withPlayers < spikes.length) add("info", `${withPlayers} spikes happened with players on; the map shows where.`);
     } else if (samples.length) add("good", `No frame took longer than ${M.settings.spikeMs} ms.`);
@@ -472,6 +480,36 @@ const Views = (() => {
   }
 
   // Mods
+  // Server
+  function serverView() {
+    const v = M.server, h = M.serverHeader;
+    if (!v) {
+      $("server-sub").textContent = "These files don't say. Canary started recording server details in its next version.";
+      $("server-table").innerHTML = "";
+      return;
+    }
+    const yes = b => b == null ? null : b ? "yes" : "no";
+    const rows = [
+      ["Name", v.name],
+      ["Scene", v.scene],
+      ["Game", h.game],
+      ["MelonLoader", v.melonLoader],
+      ["TavernLib", v.tavernLib ?? "not loaded"],
+      ["TavernLauncher", v.launcher ?? "not used"],
+      ["Canary", h.canary],
+      ["Player limit", v.maxPlayers === 0 ? "game default" : v.maxPlayers],
+      ["Password", yes(v.password)],
+      ["Whitelist", yes(v.whitelist)],
+      ["Community list", yes(v.communityListed)],
+      ["Region", v.region],
+      ["Forced GC", v.gcTimerSeconds != null ? `every ${int(v.gcTimerSeconds)} s` : null],
+      ["Mods hash", v.modsHash],
+      ["Couldn't read", v.errors?.join("; ")],
+    ].filter(r => r[1] != null && r[1] !== "");
+    $("server-sub").textContent = `As of ${Time.fmt(h.t)}. Settings come from TavernLib's server_settings.json.`;
+    $("server-table").innerHTML = `<tbody>${rows.map(([k, val]) => `<tr><th scope="row">${esc(k)}</th><td>${esc(val)}</td></tr>`).join("")}</tbody>`;
+  }
+
   function modsView() {
     const samples = within(M.samples);
     const secRows = Object.keys(M.cols.sections).map(k => {
@@ -482,7 +520,8 @@ const Views = (() => {
       const vals = samples.map(s => s.metrics?.[k]).filter(v => v != null);
       return { kind: "Metric", name: k, avg: mean(vals), peak: vals.length ? Math.max(...vals) : null, last: vals.length ? vals[vals.length - 1] : null };
     });
-    $("mods-sub").textContent = "What mods reported through CanaryApi." + (M.mods ? "" : " Open a report for the mod list.");
+    const melons = M.mods?.melons || M.server?.melons;
+    $("mods-sub").textContent = "What mods reported through CanaryApi, and what was loaded." + (melons ? "" : " Open a report for the mod list.");
     table($("section-table"), [
       { key: "kind", label: "Kind" },
       { key: "name", label: "Name" },
@@ -490,17 +529,29 @@ const Views = (() => {
       { key: "peak", label: "Peak", num: true, render: r => r.kind === "Section" ? `${num(r.peak)} ms/s` : num(r.peak) },
       { key: "last", label: "Last", num: true, render: r => r.last == null ? "–" : num(r.last) },
     ], [...secRows, ...metRows], { sortKey: "avg", empty: "None reported." });
-    const mods = M.mods;
-    if (mods) {
-      const folder = new Map((mods.modsFolder || []).filter(m => m.id).map(m => [m.files?.find(f => f.endsWith(".dll")), m]));
+    if (melons) {
+      const folder = new Map((M.mods?.modsFolder || []).filter(m => m.id).map(m => [m.files?.find(f => f.endsWith(".dll")), m]));
       table($("mods-table"), [
         { key: "name", label: "Loaded mod" },
         { key: "version", label: "Version" },
         { key: "author", label: "Author" },
         { key: "file", label: "File", render: r => `<span class="muted">${esc(r.file)}</span>` },
-        { key: "id", label: "Installed as", render: r => esc(folder.get(r.file)?.id || "") },
-      ], mods.melons || [], { sortKey: "name", sortDir: "ascending", caption: "Loaded mods" });
+        ...(M.mods ? [{ key: "id", label: "Installed as", render: r => esc(folder.get(r.file)?.id || "") }] : []),
+      ], melons, { sortKey: "name", sortDir: "ascending", caption: "Loaded mods" });
     } else $("mods-table").innerHTML = "";
+    const managed = M.server?.mods;
+    if (managed) {
+      const untracked = (M.server.untracked || []).map(u => u.name);
+      table($("managed-table"), [
+        { key: "id", label: "Mod" },
+        { key: "version", label: "Version" },
+        { key: "parity_required", label: "Clients need it", render: r => r.parity_required == null ? "–" : r.parity_required ? "yes" : "no" },
+        // TavernLib 1.4's records have client_side and server_side instead of targets
+        { key: "targets", label: "Targets", render: r => esc((r.targets || [r.client_side && "client", r.server_side && "server"].filter(Boolean)).join(", ")) },
+        { key: "source_repo", label: "From", render: r => `<span class="muted">${esc(r.source_repo)}</span>` },
+      ], managed, { sortKey: "id", sortDir: "ascending", empty: "None installed.",
+        caption: `Installed by TavernLib's mod manager${untracked.length ? `; also loaded, but not installed by it: ${esc(untracked.join(", "))}` : ""}` });
+    } else $("managed-table").innerHTML = "";
   }
 
   // Files & time zones
@@ -559,7 +610,7 @@ const Views = (() => {
   return {
     set model(m) { M = m; },
     setRange(min, max) { R = [min, max]; },
-    renderAll() { overview(); spikesView(); playersView(); entitiesView(); errorsView(); modulesView(); modsView(); filesView(); rawView(true); },
+    renderAll() { overview(); serverView(); spikesView(); playersView(); entitiesView(); errorsView(); modulesView(); modsView(); filesView(); rawView(true); },
     initRaw, rawView, drawMap, mapHover, fitMap, updateScrubLabel, map,
     moreRaw() { rawShown += 500; rawView(false); },
   };

@@ -40,6 +40,7 @@
   </div>
   <nav class="nav" id="nav" hidden>
     <a href="#overview">Overview</a>
+    <a href="#server">Server</a>
     <a href="#timeline">Timeline</a>
     <a href="#spikes">Lag spikes</a>
     <a href="#players">Players</a>
@@ -60,6 +61,12 @@
     <div class="tiles" id="tiles"></div>
     <h3>Worth a look</h3>
     <ul class="findings" id="findings"></ul>
+  </section>
+
+  <section id="server" class="panel" hidden>
+    <h2>Server</h2>
+    <p class="panel-sub" id="server-sub"></p>
+    <div class="table-wrap"><table id="server-table" class="data"></table></div>
   </section>
 
   <section id="timeline" class="panel" hidden>
@@ -126,6 +133,7 @@
     <p class="panel-sub" id="mods-sub"></p>
     <div class="table-wrap"><table id="section-table" class="data"></table></div>
     <div class="table-wrap"><table id="mods-table" class="data"></table></div>
+    <div class="table-wrap"><table id="managed-table" class="data"></table></div>
   </section>
 
   <section id="files" class="panel" hidden>
