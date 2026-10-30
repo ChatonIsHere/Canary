@@ -19,6 +19,21 @@ settings, the versions of the game, MelonLoader, TavernLib and TavernLauncher (w
 and its mods, including what TavernLib's mod manager installed. Without TavernLib, or with an older one,
 it records what it can.
 
+## Viewer
+
+The [viewer](https://chatonishere.github.io/Canary/) charts it all, lists spikes, errors and entities, and
+plots where players went. Recordings from Canary 0.4.0 also show where each second's time goes, by Unity
+player-loop phase, which phases each lag spike was stuck in, and how many chunks were loaded.
+
+To see players on the game's map, extract it from your own install (it's the game's artwork, so Canary
+doesn't ship it), then open the `map.png` and `map.json` it writes along with a recording. The viewer
+keeps it for next time.
+
+```
+pip install UnityPy
+python tools/extract_map.py "<game folder>" <out>
+```
+
 ## Commands
 
 | | |

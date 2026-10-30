@@ -139,6 +139,9 @@ const Load = (() => {
     m.cols = sampleColumns(samples, m.gaps);
     m.res = resourceColumns(m.resources, m.settings.resourceSeconds);
     m.players = playerTracks(m.positions);
+    // Canary 0.4.0 and later time each player-loop phase; older files have none.
+    const phases = Object.keys(m.cols.phases);
+    m.phaseNames = { work: phases.filter(n => !idlePhase(n)), idle: phases.filter(idlePhase) };
     return m;
   }
 
@@ -149,15 +152,18 @@ const Load = (() => {
     return gaps;
   }
 
+  // The phases where the main thread waits for its next frame: idle time, not work.
+  const idlePhase = name => /WaitForLastPresentation/.test(name) || name === "(between frames)";
+
   // Columns for uPlot. A null row in each gap breaks the line there.
   function sampleColumns(samples, gaps) {
-    const keys = { modules: new Set(), sections: new Set(), metrics: new Set() };
+    const keys = { modules: new Set(), sections: new Set(), metrics: new Set(), phases: new Set() };
     for (const s of samples) for (const k of Object.keys(keys)) if (s[k]) for (const n of Object.keys(s[k])) keys[k].add(n);
     const c = {
       t: [], avg: [], p50: [], p95: [], max: [], heap: [], mem: [], players: [], entities: [], errors: [],
-      gc: [], frames: [], modules: {}, sections: {}, metrics: {},
+      gc: [], frames: [], chunks: [], modules: {}, sections: {}, metrics: {}, phases: {},
     };
-    for (const k of ["modules", "sections", "metrics"]) for (const n of keys[k]) c[k][n] = [];
+    for (const k of ["modules", "sections", "metrics", "phases"]) for (const n of keys[k]) c[k][n] = [];
     const gapStarts = new Set(gaps.map(g => g.from));
     const push = (s, isGap) => {
       c.t.push(isGap ? (s.t + 1000) / 1000 : s.t / 1000);
@@ -165,11 +171,13 @@ const Load = (() => {
       c.avg.push(v(s.avgMs)); c.p50.push(v(s.p50Ms)); c.p95.push(v(s.p95Ms)); c.max.push(v(s.maxMs));
       c.heap.push(v(s.heapMb)); c.mem.push(v(s.memMb || null)); c.players.push(v(s.players));
       c.entities.push(v(s.entities)); c.errors.push(v(s.errors)); c.frames.push(v(s.frames));
-      c.gc.push(isGap ? null : (s.gc ? s.gc[0] : null));
+      c.gc.push(isGap ? null : (s.gc ? s.gc[0] : null)); c.chunks.push(v(s.chunks));
       // Modules that took no time are left out of a sample.
       for (const n of keys.modules) c.modules[n].push(isGap ? null : (s.modules ? (s.modules[n] ?? 0) : null));
       for (const n of keys.sections) c.sections[n].push(isGap ? null : (s.sections ? (s.sections[n] ?? 0) : 0));
       for (const n of keys.metrics) c.metrics[n].push(isGap ? null : (s.metrics?.[n] ?? null));
+      // Phases under 0.5 ms are left out too.
+      for (const n of keys.phases) c.phases[n].push(isGap ? null : (s.phases ? (s.phases[n] ?? 0) : null));
     };
     for (const s of samples) {
       push(s, false);
@@ -230,5 +238,5 @@ const Load = (() => {
     return [...players.values()];
   }
 
-  return { readFile, parseBytes, build };
+  return { readFile, parseBytes, build, idlePhase };
 })();

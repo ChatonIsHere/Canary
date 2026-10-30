@@ -183,6 +183,8 @@ internal static class Recorder
             Entities = NetworkEntity.SpawnedCount,
             Errors = ErrorGroups.TakeCount(),
             Modules = ReadUpdateModules(),
+            Phases = CanaryConfig.RecordPhases ? FramePhases.TakeSecond() : null,
+            LoadedChunks = Alta.Chunks.Chunk.LoadedCount,
         };
         lock (ApiLock)
         {
@@ -222,12 +224,14 @@ internal static class Recorder
 
     private static void Spike(float frameMs, bool gc, double now)
     {
+        var phases = FramePhases.TakeSpikeBreakdown();
         Add(new SpikeRecord
         {
             Ms = Round(frameMs),
             Gc = gc,
             Players = Player.AllPlayers.Count,
             Entities = NetworkEntity.SpawnedCount,
+            Phases = phases?.ToDictionary(kv => kv.Key, kv => kv.Value),
         });
 
         // At most one console line per 10 s.
@@ -237,7 +241,8 @@ internal static class Recorder
             return;
         }
         var more = _unloggedSpikes > 0 ? $" (+{_unloggedSpikes} more since the last warning)" : "";
-        CanaryMod.Log.Warning($"Lag spike: {frameMs:F0} ms{(gc ? ", garbage collection ran" : "")}{more}");
+        var where = phases is { Count: > 0 } ? $" ({phases[0].Key} {phases[0].Value:F0} ms)" : "";
+        CanaryMod.Log.Warning($"Lag spike: {frameMs:F0} ms{where}{(gc ? ", garbage collection ran" : "")}{more}");
         _unloggedSpikes = 0;
         _nextSpikeLog = now + 10_000;
     }

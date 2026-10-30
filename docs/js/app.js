@@ -75,10 +75,13 @@
 
   // Loading
   async function open(fileList) {
-    const files = [...fileList];
-    if (!files.length) return;
+    const { rest, note } = await takeMapFiles([...fileList]);
+    if (!rest.length) {
+      if (note && !M) { $("load-notes").hidden = false; $("load-notes").textContent = `${note} Now open a recording.`; }
+      return;
+    }
     const parsed = [];
-    for (const f of files) {
+    for (const f of rest) {
       try { parsed.push(await Load.readFile(f)); }
       catch (e) { parsed.push({ name: f.name, size: f.size, records: [], notes: [`Couldn't read: ${e.message}`], extras: {} }); }
     }
@@ -103,9 +106,96 @@
     document.title = `${parsed.length === 1 ? parsed[0].name : `${parsed.length} files`} · Canary`;
     $("welcome").hidden = true;
     for (const id of ["overview", "server", "timeline", "spikes", "players", "entities", "errors", "modules", "mods", "files", "raw", "nav", "range-row"]) $(id).hidden = false;
+    $("phases").hidden = $("phases-link").hidden = !M.phaseNames.work.length;
+    Views.map.userView = false;
     Views.initRaw();
     rebuild();
   }
+
+  // Game map: map.png and map.json from tools/extract_map.py, drawn under the player positions. Kept in
+  // IndexedDB for next time; without storage it lasts until the page closes.
+  const mapDb = {
+    run(mode, fn) {
+      return new Promise((ok, fail) => {
+        const req = indexedDB.open("canary", 1);
+        req.onupgradeneeded = () => req.result.createObjectStore("map");
+        req.onerror = () => fail(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          try {
+            const tx = db.transaction("map", mode);
+            const r = fn(tx.objectStore("map"));
+            tx.oncomplete = () => { db.close(); ok(r.result); };
+            tx.onerror = tx.onabort = () => { db.close(); fail(tx.error); };
+          } catch (e) { db.close(); fail(e); }
+        };
+      });
+    },
+    async get() { try { return await this.run("readonly", s => s.get("current")) ?? null; } catch { return null; } },
+    async set(v) { try { await this.run("readwrite", s => s.put(v, "current")); return true; } catch { return false; } },
+    async clear() { try { await this.run("readwrite", s => s.delete("current")); } catch { /* no storage */ } },
+  };
+  const isMapMeta = j => !!j && [j.bottomLeft, j.topRight].every(p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite))
+    && j.topRight[0] > j.bottomLeft[0] && j.topRight[1] > j.bottomLeft[1];
+  // The pair in use, or half of one waiting for the other.
+  let mapMeta = null, mapBlob = null, mapUrl = null, mapSaved = false;
+
+  function mapStatus(note) {
+    const bg = Views.map.bg;
+    let text = "To draw the game's map underneath, open the map.png and map.json that Canary's tools/extract_map.py makes.";
+    if (bg) {
+      const { name, bottomLeft: [x0, z0], topRight: [x1, z1] } = bg.meta;
+      text = `Map: ${name || "game map"}, x ${Math.round(x0)} to ${Math.round(x1)}, z ${Math.round(z0)} to ${Math.round(z1)}. `
+        + (mapSaved ? "Kept in this browser for next time." : "This browser can't keep it, so it's gone when the page closes.");
+    }
+    $("map-note").textContent = note && !bg ? note : text;
+  }
+
+  async function setMap(meta, blob, save) {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.src = url;
+    try { await img.decode(); }
+    catch { URL.revokeObjectURL(url); return "Couldn't read the map image."; }
+    if (mapUrl) URL.revokeObjectURL(mapUrl);
+    mapUrl = url;
+    Views.map.bg = { img, meta };
+    $("map-bg").disabled = false;
+    $("map-bg").checked = store.get("canary-map") !== "off";
+    $("map-forget").hidden = false;
+    mapSaved = save ? await mapDb.set({ meta, blob }) : true;
+    mapStatus();
+    if (M) { Views.fitMap(); Views.drawMap(); }
+    return null;
+  }
+
+  // Takes map.png and map.json (recognised by content) out of a batch of files and returns the rest.
+  async function takeMapFiles(files) {
+    const rest = [], images = [];
+    let meta = null;
+    for (const f of files) {
+      if (/^image\//.test(f.type) || /\.(png|jpe?g|webp)$/i.test(f.name)) { images.push(f); continue; }
+      if (/\.json$/i.test(f.name) && f.size < 65536) {
+        try { const j = JSON.parse(await f.text()); if (isMapMeta(j)) { meta = j; continue; } } catch { /* not a map */ }
+      }
+      rest.push(f);
+    }
+    if (!meta && !images.length) return { rest, note: null };
+    if (meta) mapMeta = meta;
+    if (images.length) mapBlob = images.find(f => f.name === mapMeta?.image) || images[0];
+    let note;
+    if (mapMeta && mapBlob) note = await setMap(mapMeta, mapBlob, true) || `Map loaded: ${mapMeta.name || "game map"}.`;
+    else note = mapMeta ? "Got map.json; open map.png with it." : "Got a map image; open the map.json that says where it goes with it.";
+    mapStatus(note);
+    return { rest, note };
+  }
+
+  mapStatus();
+  mapDb.get().then(v => {
+    if (!isMapMeta(v?.meta) || !(v.blob instanceof Blob) || Views.map.bg) return;
+    mapMeta = v.meta; mapBlob = v.blob;
+    setMap(v.meta, v.blob, false);
+  });
 
   $("file-input").addEventListener("change", e => { open(e.target.files); e.target.value = ""; });
   let dragDepth = 0;
@@ -161,7 +251,8 @@
 
     Charts.eventLane(el, [
       { label: "Lag spikes", color: critical, events: M.spikes.map(x => ({ t: x.t, size: 3 + Math.min(6, x.ms / 300), d: x })),
-        describe: e => `<strong>Lag spike: ${Charts.fmtNum(e.d.ms, 0)} ms</strong><br>${esc(Time.fmt(e.t))}<br>${e.d.gc ? "GC ran. " : ""}${e.d.players} player(s), ${e.d.entities.toLocaleString()} entities` },
+        describe: e => `<strong>Lag spike: ${Charts.fmtNum(e.d.ms, 0)} ms</strong><br>${esc(Time.fmt(e.t))}<br>${e.d.gc ? "GC ran. " : ""}${e.d.players} player(s), ${e.d.entities.toLocaleString()} entities`
+          + (e.d.phases ? Views.spikePhases(e.d.phases).slice(0, 1).map(([n, ms]) => `<br>Slowest: ${esc(n)}, ${Charts.fmtNum(ms, 0)} ms`).join("") : "") },
       { label: "Garbage collection", color: warning, shape: "tick", events: M.samples.filter(x => x.gc && x.gc[0] > 0).map(x => ({ t: x.t, d: x })),
         describe: e => `<strong>Garbage collection</strong><br>${esc(Time.fmt(e.t))}<br>slowest frame ${Charts.fmtNum(e.d.maxMs)} ms, heap ${Charts.fmtNum(e.d.heapMb, 0)} MB after` },
       { label: "New errors", color: serious, events: M.errors.map(x => ({ t: x.t, d: x })),
@@ -189,6 +280,20 @@
       Charts.timeChart(el, { title: "Frames per second", x: c.t, series: [{ label: "Frames", values: c.frames, color: s(0) }], height: 140, fmt: v => Charts.fmtNum(v, 0) });
       if (Object.keys(c.modules).length)
         Charts.timeChart(el, { title: "Update modules", unit: "ms per second", unitShort: "ms/s", x: c.t, series: topSeries(c.modules), height: 200 });
+      const ph = M.phaseNames;
+      if (ph.work.length)
+        Charts.timeChart(el, {
+          title: "Where the time goes", unit: "ms per second, stacked", unitShort: "ms/s", stacked: true, height: 220,
+          note: "Main-thread work by player-loop phase. Waiting for the next frame is left out.",
+          x: c.t, series: topSeries(Object.fromEntries(ph.work.map(n => [n, c.phases[n]]))),
+        });
+      if (ph.idle.length) {
+        const idle = c.t.map((_, i) => ph.idle.some(n => c.phases[n][i] != null) ? ph.idle.reduce((sum, n) => sum + (c.phases[n][i] || 0), 0) : null);
+        Charts.timeChart(el, {
+          title: "Waiting for the next frame", unit: "ms per second", unitShort: "ms/s", height: 110,
+          note: "Idle, not work. Near zero, the server can't keep up.", x: c.t, series: [{ label: "Waiting", values: idle, color: muted }],
+        });
+      }
 
       group("Memory");
       Charts.timeChart(el, {
@@ -199,6 +304,8 @@
 
       group("World");
       Charts.timeChart(el, { title: "Players online", x: c.t, series: [{ label: "Players", values: c.players, color: s(0), step: true }], height: 120, fmt: v => Charts.fmtNum(v, 0) });
+      if (c.chunks.some(v => v != null))
+        Charts.timeChart(el, { title: "Loaded chunks", x: c.t, series: [{ label: "Chunks", values: c.chunks, color: s(0), step: true }], height: 120, fmt: v => Charts.fmtNum(v, 0) });
       Charts.timeChart(el, { title: "Entities", x: c.t, series: [{ label: "Entities", values: c.entities, color: s(0) }], height: 140, fmt: v => Math.round(v).toLocaleString(), yMin: null });
       if (M.census.length > 1) {
         const ct = M.census.map(x => x.t / 1000);
@@ -324,7 +431,50 @@
   });
   $("map-spikes").addEventListener("change", () => Views.drawMap());
   $("map-paths").addEventListener("change", () => Views.drawMap());
-  $("map").addEventListener("mousemove", e => Views.mapHover(e));
+  $("map-bg").addEventListener("change", e => {
+    store.set("canary-map", e.target.checked ? "on" : "off");
+    if (M) { if (!Views.map.userView) Views.fitMap(); Views.drawMap(); }
+  });
+  $("map-forget").addEventListener("click", () => {
+    mapDb.clear();
+    if (mapUrl) URL.revokeObjectURL(mapUrl);
+    mapUrl = mapMeta = mapBlob = Views.map.bg = null;
+    $("map-bg").disabled = true;
+    $("map-forget").hidden = true;
+    mapStatus();
+    if (M) { if (!Views.map.userView) Views.fitMap(); Views.drawMap(); }
+  });
+  // Scroll to zoom, drag to move (mouse only, so touch still scrolls the page), double-click to fit.
+  const mapPos = e => { const r = $("map").getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  let pan = null;
+  $("map").addEventListener("wheel", e => {
+    if (!M || !Views.map.view) return;
+    e.preventDefault();
+    const dy = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1);
+    Views.zoomMap(Math.exp(dy * 0.002), ...mapPos(e));
+  }, { passive: false });
+  $("map").addEventListener("pointerdown", e => {
+    if (e.pointerType !== "mouse" || e.button !== 0 || !M || !Views.map.view) return;
+    pan = mapPos(e);
+    $("map").setPointerCapture(e.pointerId);
+    $("map").classList.add("panning");
+    $("map-tip").hidden = true;
+  });
+  $("map").addEventListener("pointermove", e => {
+    if (!pan) return;
+    const [x, y] = mapPos(e);
+    Views.panMap(x - pan[0], y - pan[1]);
+    pan = [x, y];
+  });
+  const endPan = () => { pan = null; $("map").classList.remove("panning"); };
+  $("map").addEventListener("pointerup", endPan);
+  $("map").addEventListener("pointercancel", endPan);
+  const refit = () => { if (M) { Views.fitMap(); Views.drawMap(); } };
+  $("map").addEventListener("dblclick", refit);
+  $("map-fit").addEventListener("click", refit);
+  $("map-in").addEventListener("click", () => { if (M) Views.zoomMap(1 / 1.5); });
+  $("map-out").addEventListener("click", () => { if (M) Views.zoomMap(1.5); });
+  $("map").addEventListener("mousemove", e => { if (!pan) Views.mapHover(e); });
   $("map").addEventListener("mouseleave", () => { $("map-tip").hidden = true; });
   $("raw-type").addEventListener("change", () => Views.rawView(true));
   $("raw-filter").addEventListener("input", () => Views.rawView(true));
@@ -346,11 +496,13 @@
   // CSV export
   $("csv-btn").addEventListener("click", () => {
     const samples = M.samples.filter(s => s.t >= range[0] && s.t <= range[1]);
-    const modules = Object.keys(M.cols.modules);
-    const head = ["utc", `time (${Time.label(range[0])})`, "frames", "avgMs", "p50Ms", "p95Ms", "maxMs", "gc", "heapMb", "memMb", "players", "entities", "errors", ...modules.map(m => `module: ${m}`)];
+    const modules = Object.keys(M.cols.modules), phases = Object.keys(M.cols.phases);
+    const head = ["utc", `time (${Time.label(range[0])})`, "frames", "avgMs", "p50Ms", "p95Ms", "maxMs", "gc", "heapMb", "memMb", "players", "entities", "chunks", "errors",
+      ...modules.map(m => `module: ${m}`), ...phases.map(p => `phase: ${p}`)];
     const q = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
     const lines = [head.map(q).join(",")];
-    for (const s of samples) lines.push([new Date(s.t).toISOString(), Time.fmt(s.t), s.frames, s.avgMs, s.p50Ms, s.p95Ms, s.maxMs, s.gc?.[0] ?? "", s.heapMb, s.memMb ?? "", s.players, s.entities, s.errors, ...modules.map(m => s.modules?.[m] ?? 0)].map(q).join(","));
+    for (const s of samples) lines.push([new Date(s.t).toISOString(), Time.fmt(s.t), s.frames, s.avgMs, s.p50Ms, s.p95Ms, s.maxMs, s.gc?.[0] ?? "", s.heapMb, s.memMb ?? "", s.players, s.entities, s.chunks ?? "", s.errors,
+      ...modules.map(m => s.modules?.[m] ?? 0), ...phases.map(p => s.phases ? s.phases[p] ?? 0 : "")].map(q).join(","));
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);

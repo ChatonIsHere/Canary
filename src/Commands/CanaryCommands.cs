@@ -26,7 +26,12 @@ public static class CanaryCommands
             : $"Recording since {ServerTime.Of(recording.Started):yyyy-MM-dd HH:mm:ss}: {recording.Records} records, {recording.Bytes / 1048576.0:F2} MB, part {recording.Part}, now writing {recording.Path}.");
 
         if (Recorder.LastSample is { } s)
-            sb.AppendLine($"Last second: {s.Frames} frames, avg {s.AvgMs} ms, p95 {s.P95Ms} ms, max {s.MaxMs} ms; {s.Players} player(s), {s.Entities} entities, heap {s.HeapMb} MB.");
+        {
+            sb.AppendLine($"Last second: {s.Frames} frames, avg {s.AvgMs} ms, p95 {s.P95Ms} ms, max {s.MaxMs} ms; {s.Players} player(s), {s.Entities} entities, {s.LoadedChunks} chunks loaded, heap {s.HeapMb} MB.");
+            if (s.Phases is { Count: > 0 })
+                sb.AppendLine("Busiest phases: " + string.Join(", ", s.Phases.Where(p => p.Key != "(between frames)")
+                    .OrderByDescending(p => p.Value).Take(4).Select(p => $"{p.Key} {p.Value:F0} ms")));
+        }
 
         if (Recorder.LastResources is { } r)
         {
@@ -87,7 +92,8 @@ public static class CanaryCommands
         var spikes = Recorder.Snapshot().OfType<SpikeRecord>().Reverse().Take(Math.Max(1, count)).ToList();
         if (spikes.Count == 0) return $"No lag spikes over {CanaryConfig.SpikeMs} ms in the last {CanaryConfig.BufferMinutes} minute(s).";
         return ServerTime.Legend() + "\n" + string.Join("\n", spikes.Select(s =>
-            $"{ServerTime.Of(s.Time):HH:mm:ss}  {s.Ms,7:F0} ms{(s.Gc ? "  GC" : "    ")}  {s.Players} player(s), {s.Entities} entities"));
+            $"{ServerTime.Of(s.Time):HH:mm:ss}  {s.Ms,7:F0} ms{(s.Gc ? "  GC" : "    ")}  {s.Players} player(s), {s.Entities} entities"
+            + (s.Phases is { Count: > 0 } ? "  " + string.Join(", ", s.Phases.Select(p => $"{p.Key} {p.Value:F0} ms")) : "")));
     }
 
     [ServerOnly]

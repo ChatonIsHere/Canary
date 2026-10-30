@@ -13,6 +13,7 @@ internal static class CanaryConfig
     private static MelonPreferences_Entry<float> _positionSeconds;
     private static MelonPreferences_Entry<float> _censusSeconds;
     private static MelonPreferences_Entry<bool> _recordUpdateModules;
+    private static MelonPreferences_Entry<bool> _recordPhases;
     private static MelonPreferences_Entry<float> _resourceSeconds;
     private static MelonPreferences_Entry<bool> _recordOnBoot;
     private static MelonPreferences_Entry<bool> _compress;
@@ -25,6 +26,7 @@ internal static class CanaryConfig
     public static float PositionSeconds => Math.Max(1f, _positionSeconds.Value);
     public static float CensusSeconds => Math.Max(10f, _censusSeconds.Value);
     public static bool RecordUpdateModules => _recordUpdateModules.Value;
+    public static bool RecordPhases => _recordPhases.Value;
     public static float ResourceSeconds => Math.Max(1f, _resourceSeconds.Value);
     public static bool RecordOnBoot => _recordOnBoot.Value;
     public static bool Compress => _compress.Value;
@@ -42,6 +44,7 @@ internal static class CanaryConfig
         _positionSeconds = category.CreateEntry("PositionSeconds", 5f, description: "Seconds between player position records.");
         _censusSeconds = category.CreateEntry("CensusSeconds", 60f, description: "Seconds between entity counts.");
         _recordUpdateModules = category.CreateEntry("RecordUpdateModules", true, description: "Record the game's per-module update times.");
+        _recordPhases = category.CreateEntry("RecordPhases", true, description: "Time every Unity player-loop phase, so spikes say where the frame went.");
         _resourceSeconds = category.CreateEntry("ResourceSeconds", 5f, description: "Seconds between CPU, memory, disk and network readings.");
         _recordOnBoot = category.CreateEntry("RecordOnBoot", false, description: "Start recording to disk on every boot.");
         _compress = category.CreateEntry("Compress", true, description: "Gzip recordings.");

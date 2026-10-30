@@ -13,6 +13,28 @@ const Charts = (() => {
   const slot = i => css(`--s${i + 1}`);
   const colors = () => ({ ink: css("--ink"), ink2: css("--ink-2"), muted: css("--muted-foreground"), grid: css("--grid"), axis: css("--axis"), surface: css("--surface") });
 
+  // An opaque colour a share `a` of the way from `base` to `color` (both #rrggbb).
+  function mix(color, base, a) {
+    const rgb = h => { const m = /^#([0-9a-f]{6})/i.exec(h); return m ? [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16)) : null; };
+    const x = rgb(color), y = rgb(base);
+    if (!x || !y) return color;
+    return `rgb(${x.map((v, i) => Math.round(v * a + y[i] * (1 - a))).join(", ")})`;
+  }
+
+  // Running totals from the last series up, so the first series is the top band. Null where every
+  // series is null (a gap).
+  function stack(series) {
+    let below = null;
+    const out = [];
+    for (let k = series.length - 1; k >= 0; k--) {
+      const raw = series[k].values;
+      const sum = raw.map((v, i) => v == null && (below == null || below[i] == null) ? null : (v || 0) + (below?.[i] || 0));
+      out[k] = { ...series[k], values: sum, raw };
+      below = sum;
+    }
+    return out;
+  }
+
   function fmtNum(v, digits = 2) {
     if (v == null || !isFinite(v)) return "–";
     const a = Math.abs(v);
@@ -85,6 +107,8 @@ ${day}` : time;
   }
 
   // series: [{ label, values, color, width, bars, dash, fmt }]
+  // stacked: each series sits on the ones after it. uPlot draws in order, so each band fills down to
+  // zero over the bands before it, opaquely; the legend still shows each series' own value.
   function timeChart(container, cfg) {
     const c = colors();
     const wrap = document.createElement("div");
@@ -115,18 +139,22 @@ ${day}` : time;
         },
       };
     }
+    const series = cfg.stacked ? stack(cfg.series) : cfg.series;
     opts.series = [
       { label: "Time", value: (u, v) => v == null ? "–" : Time.fmt(v * 1000) },
-      ...cfg.series.map(s => ({
+      ...series.map(s => ({
         label: s.label,
         stroke: s.color,
-        width: s.width ?? (s.bars ? 0 : 1.5),
-        fill: s.bars ? s.color : undefined,
+        width: s.width ?? (s.bars ? 0 : cfg.stacked ? 1 : 1.5),
+        fill: s.bars ? s.color : cfg.stacked ? mix(s.color, c.surface, 0.6) : undefined,
         dash: s.dash,
         paths: s.bars ? uPlot.paths.bars({ size: [0.9, 8], align: 1 }) : (s.step ? uPlot.paths.stepped({ align: 1 }) : undefined),
         points: { show: false },
         spanGaps: false,
-        value: (u, v) => v == null ? "–" : `${(s.fmt || valFmt)(v)}${cfg.unitShort ? " " + cfg.unitShort : ""}`,
+        value: (u, v, si, i) => {
+          if (s.raw) v = i == null ? null : s.raw[i];
+          return v == null ? "–" : `${(s.fmt || valFmt)(v)}${cfg.unitShort ? " " + cfg.unitShort : ""}`;
+        },
       })),
     ];
     if (cfg.threshold != null) {
@@ -148,7 +176,7 @@ ${day}` : time;
         ctx.restore();
       }];
     }
-    const data = [cfg.x, ...cfg.series.map(s => s.values)];
+    const data = [cfg.x, ...series.map(s => s.values)];
     const u = new uPlot(opts, data, body);
     u._canary = { body };
     register(u);
@@ -272,7 +300,7 @@ ${day}` : time;
   }
 
   return {
-    timeChart, eventLane, resetZoom, setRange, destroyAll, resize, fmtNum, slot, css,
+    timeChart, eventLane, resetZoom, setRange, destroyAll, resize, fmtNum, slot, css, mix, stack,
     setFull(minMs, maxMs) { full = [minMs / 1000, maxMs / 1000]; },
     keepZoom(minMs, maxMs) { current = [minMs / 1000, maxMs / 1000]; },
     clearZoom() { current = null; },
