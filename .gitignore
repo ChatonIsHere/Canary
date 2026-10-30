@@ -3,3 +3,4 @@ obj/
 .vs/
 *.user
 Local.props
+__pycache__/

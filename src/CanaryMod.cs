@@ -11,7 +11,7 @@ namespace Canary;
 
 public class CanaryMod : MelonMod
 {
-    public const string Version = "0.3.0";
+    public const string Version = "0.4.0";
 
     internal static MelonLogger.Instance Log { get; private set; }
 
@@ -33,6 +33,7 @@ public class CanaryMod : MelonMod
         ErrorGroups.HookMelonLoader();
         // NLog isn't configured until the game starts.
         MelonEvents.OnApplicationLateStart.Subscribe(ErrorGroups.Install);
+        if (CanaryConfig.RecordPhases) MelonEvents.OnApplicationLateStart.Subscribe(FramePhases.Install);
         Recorder.Start();
         ResourceMonitor.Start();
         CanaryEvents.RegisterConsoleEvents();

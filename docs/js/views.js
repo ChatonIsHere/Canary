@@ -163,6 +163,15 @@ const Views = (() => {
       if (slow.length) add("warning", `Counting entities took over 50 ms ${slow.length} time(s). Raise CensusSeconds.`);
     }
 
+    if (M.phaseNames.work.length) {
+      const ps = phaseStats(samples, spikes);
+      const top = ps.rows.find(r => !r.idle);
+      if (top && top.avg > 100) add("warning", `"${top.name}" takes ${num(top.avg, 0)} ms of every second, the most of any player-loop phase.`);
+      const blamed = ps.rows.filter(r => r.spikeTop).sort((a, b) => b.spikeTop - a.spikeTop)[0];
+      if (blamed && ps.spikes >= 3 && blamed.spikeTop / ps.spikes >= 0.5)
+        add("serious", `${blamed.spikeTop} of ${ps.spikes} lag spikes spent most of their time in "${blamed.name}"${PHASE_NOTES[blamed.name] ? ` (${PHASE_NOTES[blamed.name][0].toLowerCase()}${PHASE_NOTES[blamed.name].slice(1)})` : ""}.`);
+    }
+
     const modules = moduleStats(samples);
     if (modules.length && modules[0].avg > 100) add("warning", `"${modules[0].name}" averages ${num(modules[0].avg, 0)} ms of every second.`);
 
@@ -217,8 +226,14 @@ const Views = (() => {
     const rows = spikes.map(s => {
       const sample = sampleAt(s.t);
       const top = sample?.modules ? Object.entries(sample.modules).sort((a, b) => b[1] - a[1])[0] : null;
-      return { t: s.t, ms: s.ms, gc: s.gc, players: s.players, entities: s.entities, errors: sample?.errors ?? null, module: top ? `${top[0]} (${num(top[1])} ms)` : "–" };
+      return { t: s.t, ms: s.ms, gc: s.gc, players: s.players, entities: s.entities, errors: sample?.errors ?? null, module: top ? `${top[0]} (${num(top[1])} ms)` : "–",
+        phases: s.phases ? spikePhases(s.phases) : null };
     });
+    // Canary 0.4.0 and later say which phases each spike frame spent its time in.
+    const phaseCol = M.spikes.some(s => s.phases) ? [{
+      key: "phases", label: "Slowest phases", sort: r => r.phases?.[0]?.[1] ?? null,
+      render: r => r.phases ? r.phases.map(([n, ms]) => `<span class="who${Load.idlePhase(n) ? " muted" : ""}">${esc(n)} <span class="muted">${num(ms, 1)} ms</span></span>`).join("<br>") : "–",
+    }] : [];
     $("spikes-sub").textContent = spikes.length
       ? `${spikes.length} frame(s) over ${M.settings.spikeMs} ms.`
       : `No frames over ${M.settings.spikeMs} ms.`;
@@ -229,6 +244,7 @@ const Views = (() => {
       { key: "players", label: "Players", num: true },
       { key: "entities", label: "Entities", num: true, render: r => int(r.entities) },
       { key: "errors", label: "Errors", num: true, render: r => r.errors == null ? "–" : int(r.errors) },
+      ...phaseCol,
       { key: "module", label: "Busiest module" },
     ], rows, { sortKey: "t" });
     const buckets = [[200, 300], [300, 500], [500, 1000], [1000, 2000], [2000, Infinity]];
@@ -242,8 +258,84 @@ const Views = (() => {
     $("spike-hours-cap").textContent = `By hour of day, ${Time.label(R[0])}`;
   }
 
+  // Where the time goes
+  // What the busier player-loop phases do, where that's clear.
+  const PHASE_NOTES = {
+    "TimeUpdate.WaitForLastPresentationAndUpdateTime": "Waiting for the next frame; idle, not work",
+    "(between frames)": "After the frame's last phase; idle, not work",
+    "FixedUpdate.PhysicsFixedUpdate": "Physics",
+    "FixedUpdate.ScriptRunBehaviourFixedUpdate": "Scripts' FixedUpdate",
+    "Update.ScriptRunBehaviourUpdate": "Scripts' Update",
+    "PreLateUpdate.ScriptRunBehaviourLateUpdate": "Scripts' LateUpdate",
+    "Update.ScriptRunDelayedDynamicFrameRate": "Coroutines and async continuations; GC often lands here",
+    "FixedUpdate.ScriptRunDelayedFixedFrameRate": "Coroutines waiting for FixedUpdate",
+    "Update.ScriptRunDelayedTasks": "Delayed tasks",
+    "Update.DirectorUpdate": "Animators and timelines",
+    "FixedUpdate.DirectorFixedUpdate": "Animators and timelines, at the physics rate",
+    "PreLateUpdate.DirectorUpdateAnimationBegin": "Animation",
+    "PreLateUpdate.DirectorUpdateAnimationEnd": "Animation",
+    "PreLateUpdate.ParticleSystemBeginUpdateAll": "Particle systems",
+    "PostLateUpdate.UpdateAllRenderers": "Renderers",
+    "PostLateUpdate.PlayerUpdateCanvases": "UI canvases",
+    "PostLateUpdate.PlayerEmitCanvasGeometry": "UI canvases",
+    "PostLateUpdate.PlayerSendFrameComplete": "End of frame (WaitForEndOfFrame)",
+  };
+
+  const spikePhases = phases => Object.entries(phases).sort((a, b) => b[1] - a[1]);
+
+  // Per phase: average and worst ms per second, share of the work (idle phases have none), and in how
+  // many spikes it was the slowest phase. Phases under 0.5 ms in a second count as 0 for it.
+  function phaseStats(samples, spikes) {
+    const sums = {}, peaks = {}, inSpikes = {}, topIn = {};
+    let seconds = 0, timed = 0;
+    for (const s of samples) if (s.phases) {
+      seconds++;
+      for (const [k, v] of Object.entries(s.phases)) { sums[k] = (sums[k] || 0) + v; peaks[k] = Math.max(peaks[k] || 0, v); }
+    }
+    for (const s of spikes) if (s.phases) {
+      const list = spikePhases(s.phases);
+      if (!list.length) continue;
+      timed++;
+      for (const [k, v] of list) inSpikes[k] = (inSpikes[k] || 0) + v;
+      topIn[list[0][0]] = (topIn[list[0][0]] || 0) + 1;
+    }
+    const names = [...new Set([...Object.keys(sums), ...Object.keys(inSpikes)])];
+    const work = names.filter(k => !Load.idlePhase(k)).reduce((t, k) => t + (sums[k] || 0), 0);
+    const rows = names.map(k => {
+      const idle = Load.idlePhase(k);
+      return { name: k, idle, avg: seconds ? (sums[k] || 0) / seconds : 0, peak: peaks[k] || 0,
+        share: idle || !work ? null : 100 * (sums[k] || 0) / work, spikeMs: inSpikes[k] || 0, spikeTop: topIn[k] || 0 };
+    }).sort((a, b) => b.avg - a.avg || b.spikeMs - a.spikeMs);
+    return { rows, seconds, spikes: timed, workAvg: seconds ? work / seconds : 0 };
+  }
+
+  function phasesView() {
+    if (!M.phaseNames.work.length) return;
+    const st = phaseStats(within(M.samples), within(M.spikes));
+    const idleAvg = st.rows.filter(r => r.idle).reduce((t, r) => t + r.avg, 0);
+    $("phases-sub").textContent = st.seconds
+      ? `Of each second, the main thread spent ${num(st.workAvg, 0)} ms working and ${num(idleAvg, 0)} ms waiting for the next frame. Waiting is idle, so the bars and shares leave it out.`
+      : "No phase timings in this range.";
+    hbars($("phase-bars"), st.rows.filter(r => !r.idle).slice(0, 10).map(r => ({ label: r.name, value: r.avg })), v => `${num(v)} ms/s`);
+    const blamed = st.rows.filter(r => r.spikeTop).sort((a, b) => b.spikeTop - a.spikeTop);
+    hbars($("phase-spike-bars"), blamed.slice(0, 10).map(r => ({ label: r.name, value: r.spikeTop })), int, Charts.css("--critical"));
+    $("phase-spike-cap").textContent = `Slowest phase in each lag spike${st.spikes ? ` (${st.spikes} with timings)` : ""}`;
+    const note = r => PHASE_NOTES[r.name] ? `<br><span class="muted">${esc(PHASE_NOTES[r.name])}</span>` : "";
+    table($("phase-table"), [
+      { key: "name", label: "Phase", render: r => `<span class="${r.idle ? "muted" : ""}">${esc(r.name)}</span>${note(r)}` },
+      { key: "avg", label: "Average ms/s", num: true, render: r => num(r.avg) },
+      { key: "share", label: "Share of work", num: true, sort: r => r.share ?? -1, render: r => r.idle ? `<span class="muted">idle</span>` : pct(r.share) },
+      { key: "peak", label: "Worst second (ms)", num: true, render: r => num(r.peak) },
+      { key: "spikeTop", label: "Slowest in spikes", num: true, render: r => int(r.spikeTop) },
+      { key: "spikeMs", label: "In spikes (ms)", num: true, render: r => int(r.spikeMs) },
+    ], st.rows, { sortKey: "avg", empty: "No phase timings.", caption: "The spike columns use each spike's three slowest phases." });
+  }
+
   // Players & map
-  const map = { canvas: null, ctx: null, view: null, cursorT: null, scrubT: null, points: [] };
+  // view: the square of the world on the canvas; userView once it's been zoomed or moved by hand.
+  // bg: the game map ({ img, meta }), when one's been opened.
+  const map = { canvas: null, ctx: null, view: null, userView: false, bg: null, cursorT: null, scrubT: null, points: [] };
+  const bgShown = () => !!map.bg && $("map-bg").checked;
 
   function playersView() {
     const tracks = M.players.map(p => ({ p, pts: p.points.filter(pt => inR(pt.t)) })).filter(x => x.pts.length);
@@ -287,7 +379,7 @@ const Views = (() => {
     map.scrubT = null;
     $("map-scrub").value = 1000;
     updateScrubLabel();
-    fitMap();
+    if (!map.userView || !map.view) fitMap();
     drawMap();
   }
 
@@ -296,14 +388,38 @@ const Views = (() => {
     $("scrub-label").textContent = `At ${Time.fmt(t, "time")}`;
   }
 
+  // Fits the trails, and the game map when it's shown, so trails off the map's edge still show.
   function fitMap() {
-    const all = (map.tracks || []).flatMap(t => t.pts);
-    if (!all.length) { map.view = null; return; }
-    let minX = Math.min(...all.map(p => p.x)), maxX = Math.max(...all.map(p => p.x));
-    let minZ = Math.min(...all.map(p => p.z)), maxZ = Math.max(...all.map(p => p.z));
-    const span = Math.max(maxX - minX, maxZ - minZ, 40) * 1.15;
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    const add = (x, z) => { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); };
+    for (const t of map.tracks || []) for (const p of t.pts) add(p.x, p.z);
+    const bg = bgShown();
+    if (bg) { add(...map.bg.meta.bottomLeft); add(...map.bg.meta.topRight); }
+    map.userView = false;
+    if (minX === Infinity) { map.view = null; return; }
+    const span = Math.max(maxX - minX, maxZ - minZ, 40) * (bg ? 1.04 : 1.15);
     const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
     map.view = { minX: cx - span / 2, minZ: cz - span / 2, span };
+  }
+
+  // factor > 1 zooms out, around a point on the canvas (its middle by default).
+  function zoomMap(factor, cx, cy) {
+    const v = map.view, size = $("map").clientWidth;
+    if (!v || !size) return;
+    cx ??= size / 2; cy ??= size / 2;
+    const wx = v.minX + cx / size * v.span, wz = v.minZ + (size - cy) / size * v.span;
+    const span = Math.min(Math.max(v.span * factor, 10), 50000);
+    map.view = { minX: wx - cx / size * span, minZ: wz - (size - cy) / size * span, span };
+    map.userView = true;
+    drawMap();
+  }
+
+  function panMap(dx, dy) {
+    const v = map.view, size = $("map").clientWidth;
+    if (!v || !size) return;
+    map.view = { ...v, minX: v.minX - dx / size * v.span, minZ: v.minZ + dy / size * v.span };
+    map.userView = true;
+    drawMap();
   }
 
   function drawMap() {
@@ -315,7 +431,7 @@ const Views = (() => {
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
-    const muted = Charts.css("--muted-foreground"), grid = Charts.css("--grid"), surface = Charts.css("--surface"), ink = Charts.css("--ink");
+    const muted = Charts.css("--muted-foreground"), grid = Charts.css("--grid"), surface = Charts.css("--surface"), ink = Charts.css("--ink"), axis = Charts.css("--axis");
     map.points = [];
     if (!map.view) {
       ctx.fillStyle = muted; ctx.font = "13px system-ui, sans-serif"; ctx.textAlign = "center";
@@ -325,28 +441,53 @@ const Views = (() => {
     const v = map.view;
     const px = x => (x - v.minX) / v.span * size;
     const pz = z => size - (z - v.minZ) / v.span * size; // north up
+    const bg = bgShown();
+    // Over the map image, text gets a halo in the card colour.
+    const text = (s, x, y) => {
+      if (bg) { ctx.strokeStyle = surface; ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.strokeText(s, x, y); }
+      ctx.fillText(s, x, y);
+    };
+    if (bg) {
+      // The image spans bottomLeft to topRight exactly; its top edge is the largest z.
+      const { bottomLeft: [x0, z0], topRight: [x1, z1] } = map.bg.meta;
+      const l = px(x0), t = pz(z1), w = px(x1) - l, h = pz(z0) - t;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(map.bg.img, l, t, w, h);
+      // A wash of the card colour keeps trails readable on the artwork, in either theme.
+      ctx.globalAlpha = 0.3; ctx.fillStyle = surface; ctx.fillRect(l, t, w, h); ctx.globalAlpha = 1;
+      ctx.strokeStyle = axis; ctx.lineWidth = 1; ctx.strokeRect(l, t, w, h);
+    }
     // Grid every "nice" number of metres.
     const raw = v.span / 6, mag = 10 ** Math.floor(Math.log10(raw));
     const stepM = [1, 2, 5, 10].map(m => m * mag).find(s => s >= raw) || raw;
-    ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.fillStyle = muted; ctx.font = "10px system-ui, sans-serif";
-    for (let x = Math.ceil(v.minX / stepM) * stepM; x <= v.minX + v.span; x += stepM) {
-      ctx.beginPath(); ctx.moveTo(px(x), 0); ctx.lineTo(px(x), size); ctx.stroke();
-      ctx.fillText(`x ${Math.round(x)}`, px(x) + 3, size - 4);
+    const xs = [], zs = [];
+    for (let x = Math.ceil(v.minX / stepM) * stepM; x <= v.minX + v.span; x += stepM) xs.push(x);
+    for (let z = Math.ceil(v.minZ / stepM) * stepM; z <= v.minZ + v.span; z += stepM) zs.push(z);
+    ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.globalAlpha = bg ? 0.5 : 1;
+    for (const x of xs) { ctx.beginPath(); ctx.moveTo(px(x), 0); ctx.lineTo(px(x), size); ctx.stroke(); }
+    for (const z of zs) { ctx.beginPath(); ctx.moveTo(0, pz(z)); ctx.lineTo(size, pz(z)); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = muted; ctx.font = "10px system-ui, sans-serif";
+    for (const x of xs) text(`x ${Math.round(x)}`, px(x) + 3, size - 4);
+    for (const z of zs) text(`z ${Math.round(z)}`, 3, pz(z) - 3);
+    ctx.textAlign = "right"; text("N ↑", size - 6, 14); ctx.textAlign = "left";
+    if (!map.tracks.length) {
+      ctx.fillStyle = muted; ctx.font = "13px system-ui, sans-serif"; ctx.textAlign = "center";
+      text("No positions in this time range", size / 2, size / 2);
+      ctx.textAlign = "left";
+      return;
     }
-    for (let z = Math.ceil(v.minZ / stepM) * stepM; z <= v.minZ + v.span; z += stepM) {
-      ctx.beginPath(); ctx.moveTo(0, pz(z)); ctx.lineTo(size, pz(z)); ctx.stroke();
-      ctx.fillText(`z ${Math.round(z)}`, 3, pz(z) - 3);
-    }
-    ctx.fillStyle = muted; ctx.textAlign = "right"; ctx.fillText("N ↑", size - 6, 14); ctx.textAlign = "left";
 
     const step = M.settings.positionSeconds * 1000;
     if ($("map-paths").checked) for (const { p, pts } of map.tracks) {
-      ctx.strokeStyle = playerColor(p); ctx.lineWidth = 2; ctx.globalAlpha = 0.7; ctx.lineJoin = "round";
+      ctx.lineJoin = "round";
       ctx.beginPath();
       pts.forEach((pt, i) => {
         const brk = i === 0 || pt.t - pts[i - 1].t > step * 3;
         if (brk) ctx.moveTo(px(pt.x), pz(pt.z)); else ctx.lineTo(px(pt.x), pz(pt.z));
       });
+      if (bg) { ctx.strokeStyle = surface; ctx.lineWidth = 4.5; ctx.globalAlpha = 0.8; ctx.stroke(); }
+      ctx.strokeStyle = playerColor(p); ctx.lineWidth = 2; ctx.globalAlpha = bg ? 1 : 0.7;
       ctx.stroke();
       ctx.globalAlpha = 1;
       for (const pt of pts) map.points.push({ x: px(pt.x), y: pz(pt.z), p, pt });
@@ -357,20 +498,31 @@ const Views = (() => {
         const pt = nearest(pts, s.t, step * 1.5);
         if (!pt) continue;
         const r = 4 + Math.min(6, s.ms / 300);
-        ctx.beginPath(); ctx.arc(px(pt.x), pz(pt.z), r, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(px(pt.x), pz(pt.z), r, 0, Math.PI * 2);
+        if (bg) { ctx.strokeStyle = surface; ctx.lineWidth = 3.5; ctx.stroke(); ctx.strokeStyle = Charts.css("--critical"); ctx.lineWidth = 1.5; }
+        ctx.stroke();
         map.points.push({ x: px(pt.x), y: pz(pt.z), p, pt, spike: s });
       }
       ctx.globalAlpha = 1;
     }
-    // Everyone's position at the timeline cursor, or the slider.
-    const at = map.cursorT ?? map.scrubT ?? map.tMax;
+    // Everyone's position at the timeline cursor or the slider; otherwise where each was last seen,
+    // hollow for anyone who'd left by the end.
+    const at = map.cursorT ?? map.scrubT;
     for (const { p, pts } of map.tracks) {
-      const pt = nearest(pts, at, step * 1.5);
+      const pt = at != null ? nearest(pts, at, step * 1.5) : pts[pts.length - 1];
       if (!pt) continue;
-      ctx.fillStyle = playerColor(p); ctx.strokeStyle = surface; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(px(pt.x), pz(pt.z), 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      const left = at == null && map.tMax - pt.t > step * 1.5;
+      ctx.beginPath(); ctx.arc(px(pt.x), pz(pt.z), 6, 0, Math.PI * 2);
+      if (left) {
+        ctx.fillStyle = surface; ctx.fill();
+        ctx.strokeStyle = playerColor(p); ctx.lineWidth = 2.5; ctx.stroke();
+      } else {
+        ctx.fillStyle = playerColor(p); ctx.strokeStyle = surface; ctx.lineWidth = 2;
+        ctx.fill(); ctx.stroke();
+      }
       ctx.fillStyle = ink; ctx.font = "11px system-ui, sans-serif";
-      ctx.fillText(p.name, px(pt.x) + 9, pz(pt.z) - 7);
+      text(p.name, px(pt.x) + 9, pz(pt.z) - 7);
+      map.points.push({ x: px(pt.x), y: pz(pt.z), p, pt });
     }
   }
 
@@ -610,8 +762,8 @@ const Views = (() => {
   return {
     set model(m) { M = m; },
     setRange(min, max) { R = [min, max]; },
-    renderAll() { overview(); serverView(); spikesView(); playersView(); entitiesView(); errorsView(); modulesView(); modsView(); filesView(); rawView(true); },
-    initRaw, rawView, drawMap, mapHover, fitMap, updateScrubLabel, map,
+    renderAll() { overview(); serverView(); phasesView(); spikesView(); playersView(); entitiesView(); errorsView(); modulesView(); modsView(); filesView(); rawView(true); },
+    initRaw, rawView, drawMap, mapHover, fitMap, zoomMap, panMap, updateScrubLabel, map, phaseStats, spikePhases,
     moreRaw() { rawShown += 500; rawView(false); },
   };
 })();

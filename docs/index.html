@@ -16,14 +16,15 @@
   <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
   <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
 </button>
-<input id="file-input" type="file" multiple accept=".jsonl,.gz,.zip,.json,.txt" hidden>
+<input id="file-input" type="file" multiple accept=".jsonl,.gz,.zip,.json,.txt,.png" hidden>
 
 <main id="main">
   <section id="welcome" class="welcome">
     <div class="drop" id="drop">
       <h1 class="brand">Canary</h1>
       <p>Open recordings, saved buffers or reports from a server's <code>UserData/Canary</code> folder, or drop
-        them here. Several at once are merged into one timeline.</p>
+        them here. Several at once are merged into one timeline. Add <code>map.png</code> and <code>map.json</code>
+        to see players on the game's map.</p>
       <label class="btn primary" for="file-input">Open files</label>
       <p class="small">Nothing is uploaded.</p>
     </div>
@@ -42,6 +43,7 @@
     <a href="#overview">Overview</a>
     <a href="#server">Server</a>
     <a href="#timeline">Timeline</a>
+    <a href="#phases" id="phases-link">Where the time goes</a>
     <a href="#spikes">Lag spikes</a>
     <a href="#players">Players</a>
     <a href="#entities">Entities</a>
@@ -75,6 +77,16 @@
     <div id="charts"></div>
   </section>
 
+  <section id="phases" class="panel" hidden>
+    <h2>Where the time goes</h2>
+    <p class="panel-sub" id="phases-sub"></p>
+    <div class="grid2 phase-bars">
+      <figure class="card"><figcaption>Average ms of each second, by player-loop phase</figcaption><div id="phase-bars"></div></figure>
+      <figure class="card"><figcaption id="phase-spike-cap">Slowest phase in each lag spike</figcaption><div id="phase-spike-bars"></div></figure>
+    </div>
+    <div class="table-wrap"><table id="phase-table" class="data"></table></div>
+  </section>
+
   <section id="spikes" class="panel" hidden>
     <h2>Lag spikes</h2>
     <p class="panel-sub" id="spikes-sub"></p>
@@ -90,16 +102,25 @@
     <p class="panel-sub" id="players-sub"></p>
     <div class="map-layout">
       <figure class="card">
-        <figcaption>Top-down, x east and z north. Red rings mark where players were during lag spikes.</figcaption>
+        <figcaption>Top-down, x east and z north. Dots mark where each player was last seen (hollow if they'd left),
+          or where they were at the time under the cursor. Red rings mark where players were during lag spikes.
+          Scroll to zoom, drag to move, double-click to fit.</figcaption>
         <div class="map-wrap"><canvas id="map" tabindex="0" aria-label="Map of player positions"></canvas>
           <div class="tip" id="map-tip" hidden></div></div>
         <div class="map-controls">
           <label><input type="checkbox" id="map-spikes" checked> Spikes</label>
           <label><input type="checkbox" id="map-paths" checked> Paths</label>
+          <label><input type="checkbox" id="map-bg" disabled> Game map</label>
+          <span class="map-zoom">
+            <button class="btn small" id="map-out" type="button" aria-label="Zoom out">−</button>
+            <button class="btn small" id="map-in" type="button" aria-label="Zoom in">+</button>
+            <button class="btn small" id="map-fit" type="button">Fit</button>
+          </span>
           <label class="scrub"><span id="scrub-label">At</span>
             <input type="range" id="map-scrub" min="0" max="1000" value="1000"></label>
         </div>
         <div class="legend" id="map-legend"></div>
+        <p class="map-note"><span id="map-note"></span> <button class="btn ghost small" id="map-forget" type="button" hidden>Forget map</button></p>
       </figure>
       <div class="table-wrap"><table id="player-table" class="data"></table></div>
     </div>

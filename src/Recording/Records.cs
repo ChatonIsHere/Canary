@@ -62,6 +62,7 @@ public sealed class HeaderRecord : Record
             ["positionSeconds"] = CanaryConfig.PositionSeconds,
             ["censusSeconds"] = CanaryConfig.CensusSeconds,
             ["recordUpdateModules"] = CanaryConfig.RecordUpdateModules,
+            ["recordPhases"] = CanaryConfig.RecordPhases,
             ["resourceSeconds"] = CanaryConfig.ResourceSeconds,
         };
         header.Environment = new Dictionary<string, object>
@@ -93,6 +94,9 @@ public sealed class Sample : Record
     [JsonProperty("entities")] public int Entities { get; set; }
     [JsonProperty("errors")] public int Errors { get; set; }
     [JsonProperty("modules", NullValueHandling = NullValueHandling.Ignore)] public Dictionary<string, float> Modules { get; set; }
+    // ms per Unity player-loop phase this second (FramePhases); covers the whole frame, scripts and engine.
+    [JsonProperty("phases", NullValueHandling = NullValueHandling.Ignore)] public Dictionary<string, float> Phases { get; set; }
+    [JsonProperty("chunks", NullValueHandling = NullValueHandling.Ignore)] public int? LoadedChunks { get; set; }
     [JsonProperty("sections", NullValueHandling = NullValueHandling.Ignore)] public Dictionary<string, float> Sections { get; set; }
     [JsonProperty("metrics", NullValueHandling = NullValueHandling.Ignore)] public Dictionary<string, double> Metrics { get; set; }
 }
@@ -130,6 +134,8 @@ public sealed class SpikeRecord : Record
     [JsonProperty("gc")] public bool Gc { get; set; }
     [JsonProperty("players")] public int Players { get; set; }
     [JsonProperty("entities")] public int Entities { get; set; }
+    // The phases that took the time in that frame, slowest first.
+    [JsonProperty("phases", NullValueHandling = NullValueHandling.Ignore)] public Dictionary<string, float> Phases { get; set; }
 }
 
 // CPU % is of the whole machine. "total" adds the server's child processes.
