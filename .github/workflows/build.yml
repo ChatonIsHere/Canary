@@ -2,8 +2,8 @@ name: Build
 
 on:
   push:
-    # The viewer (docs/) and tools aren't in the DLL.
-    paths-ignore: ['**.md', 'docs/**', 'tools/**']
+    # The viewer and tools aren't in the DLL; the viewer has its own workflow (pages.yml).
+    paths-ignore: ['**.md', 'tools/**', 'viewer/**', '.github/workflows/pages.yml']
   pull_request:
   workflow_dispatch:
 

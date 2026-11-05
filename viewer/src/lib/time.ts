@@ -1,0 +1,90 @@
+// Every time on the page goes through here, so the chosen zone is applied and named the same way
+// everywhere. Records are UTC; headers carry the server's offset.
+import type { Header } from "./types"
+
+export type TimeMode = "browser" | "server" | "utc"
+
+export const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "your browser's zone"
+let mode: TimeMode = "browser"
+let headers: Header[] = [] // sorted by t
+
+const pad = (n: number, w = 2) => String(n).padStart(w, "0")
+
+export function offsetText(minutes: number) {
+  const sign = minutes < 0 ? "-" : "+"
+  const m = Math.abs(minutes)
+  return `UTC${sign}${pad(Math.floor(m / 60))}:${pad(m % 60)}`
+}
+
+export const browserOffsetAt = (ms: number) => -new Date(ms).getTimezoneOffset()
+
+// The latest header at or before a moment (each part gets one, for daylight saving).
+export function headerAt(ms: number): Header | null {
+  if (!headers.length) return null
+  let found = headers[0]
+  for (const h of headers) {
+    if (h.t <= ms) found = h
+    else break
+  }
+  return found
+}
+
+export const hasServerZone = () => headers.some((h) => typeof h.utcOffsetMin === "number")
+export const serverOffsetAt = (ms: number) => headerAt(ms)?.utcOffsetMin ?? 0
+
+function offsetAt(ms: number) {
+  if (mode === "utc") return 0
+  if (mode === "server") return serverOffsetAt(ms)
+  return browserOffsetAt(ms)
+}
+
+// Calendar fields of a moment in the chosen zone.
+export function parts(ms: number) {
+  const d = new Date(ms + offsetAt(ms) * 60000)
+  return {
+    Y: d.getUTCFullYear(), M: d.getUTCMonth(), D: d.getUTCDate(),
+    h: d.getUTCHours(), m: d.getUTCMinutes(), s: d.getUTCSeconds(), ms: d.getUTCMilliseconds(),
+  }
+}
+
+export function fmt(ms: number | null | undefined, style: "datetime" | "time" | "short" | "date" = "datetime") {
+  if (ms == null || !isFinite(ms)) return "–"
+  const p = parts(ms)
+  const date = `${p.Y}-${pad(p.M + 1)}-${pad(p.D)}`
+  const time = `${pad(p.h)}:${pad(p.m)}:${pad(p.s)}`
+  if (style === "time") return time
+  if (style === "short") return `${pad(p.h)}:${pad(p.m)}`
+  if (style === "date") return date
+  return `${date} ${time}`
+}
+
+// "your time (Europe/London, UTC+00:00)"
+export function label(ms = Date.now()) {
+  if (mode === "utc") return "UTC"
+  if (mode === "server") {
+    const h = headerAt(ms)
+    return `server time (${h?.timeZone ?? "unknown zone"}, ${offsetText(serverOffsetAt(ms))})`
+  }
+  return `your time (${browserZone}, ${offsetText(browserOffsetAt(ms))})`
+}
+
+// For uPlot: a Date whose local fields read as the chosen zone.
+export function chartDate(seconds: number) {
+  const p = parts(seconds * 1000)
+  return new Date(p.Y, p.M, p.D, p.h, p.m, p.s, p.ms)
+}
+
+export function duration(ms: number) {
+  if (!isFinite(ms)) return "–"
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s} s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m} min ${pad(s % 60)} s`
+  const h = Math.floor(m / 60)
+  if (h < 48) return `${h} h ${pad(m % 60)} min`
+  return `${Math.floor(h / 24)} days ${h % 24} h`
+}
+
+export const getMode = () => mode
+export const setMode = (m: TimeMode) => { mode = m }
+export const setHeaders = (list: Header[]) => { headers = list.slice().sort((a, b) => a.t - b.t) }

@@ -64,4 +64,7 @@ Console tools can `websocket subscribe CanaryLagSpike` (and `CanarySample`, `Can
 `Local.props`. Without the game, use [att-stubs](https://github.com/ChatonIsHere/att-stubs) as
 `GameDir`, as CI does. Each push to main is released as `YY.M.N` (year, month, and the release's number in that
 month); local builds are `0.0.0-dev`.
-The viewer is the static site in `docs/`.
+
+The viewer is a React app in `viewer/` (Vite, shadcn/ui, uPlot). `npm ci`, then `npm run dev` to work on it
+or `npm run build` for the static site in `viewer/dist`. Pushes to main that change it publish it to GitHub
+Pages; they don't make a release.
