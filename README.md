@@ -62,5 +62,6 @@ Console tools can `websocket subscribe CanaryLagSpike` (and `CanarySample`, `Can
 
 `dotnet build -c Release -p:GameDir=<game install with MelonLoader>`, or set `GameDir` in a
 `Local.props`. Without the game, use [att-stubs](https://github.com/ChatonIsHere/att-stubs) as
-`GameDir`, as CI does. A push to main with a new `<Version>` in `Canary.csproj` releases it.
+`GameDir`, as CI does. Each push to main is released as `YY.M.N` (year, month, and the release's number in that
+month); local builds are `0.0.0-dev`.
 The viewer is the static site in `docs/`.
