@@ -31,7 +31,7 @@ export function VBars({ items, label }: { items: Bar[]; label: string }) {
       {items.map((i, n) => (
         <div key={i.label} title={`${i.title || i.label}: ${i.value}`} className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end">
           <div className="w-full rounded-t bg-chart-1 group-hover:outline-2 group-hover:outline-foreground" style={{ height: `${(i.value / max * 100).toFixed(1)}%` }} />
-          <span className={`mt-1 text-xs text-muted-foreground tabular-nums ${n % 2 ? "invisible sm:visible" : ""}`}>{i.label}</span>
+          <span className={`mt-1 text-sm text-muted-foreground tabular-nums ${n % 2 ? "invisible sm:visible" : ""}`}>{i.label}</span>
         </div>
       ))}
     </div>

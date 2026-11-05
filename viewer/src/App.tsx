@@ -229,12 +229,25 @@ export default function App() {
     <div className="min-h-svh">
       <input ref={fileInput} type="file" multiple accept=".jsonl,.gz,.zip,.json,.txt,.png" hidden
         onChange={(e) => { if (e.target.files) open(e.target.files); e.target.value = "" }} />
-      <header className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-6 gap-y-3 px-4 pt-5 sm:px-6">
-        <h1 className="text-2xl font-semibold">Canary</h1>
-        {M && (
-          <div className="ml-auto flex flex-wrap items-end gap-2">
-            <div className="grid gap-1">
-              <Label htmlFor="tz-select" className="text-sm font-normal text-muted-foreground">Times in</Label>
+      <h1 className="sr-only">Canary recording viewer</h1>
+      {M && (
+        <div className="mx-auto mt-4 flex max-w-[1400px] flex-wrap items-center gap-2 px-4 sm:px-6">
+          <nav aria-label="Sections" className="min-w-0 flex-1">
+            <ul className="flex flex-wrap gap-1 rounded-lg bg-muted p-1">
+              {SECTIONS.filter(([id]) => id !== "phases" || hasPhases).map(([id, label]) => (
+                <li key={id}>
+                  <a href={`#${id}`} aria-current={active === id ? "location" : undefined}
+                    className={cn(buttonVariants({ variant: "ghost" }), "h-8 px-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground",
+                      active === id && "bg-background text-foreground shadow-sm hover:bg-background")}>
+                    {label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <div className="flex flex-wrap items-center gap-2">
+            <div>
+              <Label htmlFor="tz-select" className="sr-only">Times in</Label>
               <Select value={tz} onValueChange={changeTz}>
                 <SelectTrigger id="tz-select" className="h-9 max-w-[min(22rem,calc(100vw-2rem))]"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -250,23 +263,7 @@ export default function App() {
             <Button variant="outline" className="h-9" onClick={exportCsv}><Download data-icon="inline-start" />Export CSV</Button>
             <Button className="h-9" onClick={() => fileInput.current?.click()}><FolderOpen data-icon="inline-start" />Open files</Button>
           </div>
-        )}
-      </header>
-
-      {M && (
-        <nav aria-label="Sections" className="mx-auto mt-4 max-w-[1400px] px-4 sm:px-6">
-          <ul className="flex flex-wrap gap-1 rounded-lg bg-muted p-1">
-            {SECTIONS.filter(([id]) => id !== "phases" || hasPhases).map(([id, label]) => (
-              <li key={id}>
-                <a href={`#${id}`} aria-current={active === id ? "location" : undefined}
-                  className={cn(buttonVariants({ variant: "ghost" }), "h-8 px-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground",
-                    active === id && "bg-background text-foreground shadow-sm hover:bg-background")}>
-                  {label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        </div>
       )}
 
       <main ref={mainRef} className="mx-auto grid max-w-[1400px] grid-cols-1 gap-4 px-4 pt-4 pb-10 sm:px-6">
