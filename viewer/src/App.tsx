@@ -285,7 +285,6 @@ export default function App() {
                   to see players on the game's map.
                 </p>
                 <Button size="lg" className="h-10 px-4 text-base" onClick={() => fileInput.current?.click()}><FolderOpen data-icon="inline-start" />Open files</Button>
-                <p className="text-sm text-muted-foreground">Nothing is uploaded.</p>
               </CardContent>
             </Card>
           </section>
