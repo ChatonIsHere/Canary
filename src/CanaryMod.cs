@@ -11,7 +11,7 @@ namespace Canary;
 
 public class CanaryMod : MelonMod
 {
-    public const string Version = "0.4.0";
+    public const string Version = Build.Version;
 
     internal static MelonLogger.Instance Log { get; private set; }
 
