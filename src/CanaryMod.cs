@@ -45,6 +45,7 @@ public class CanaryMod : MelonMod
     {
         if (!IsServer) return;
         Recorder.Tick();
+        Profiler.Tick();
         DebugLogging.Tick();
     }
 

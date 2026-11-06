@@ -37,6 +37,7 @@
     <Reference Include="Alta.Timing.Runtime" HintPath="$(Managed)Alta.Timing.Runtime.dll" Private="false" />
     <Reference Include="Alta.Api.DataTransferModels" HintPath="$(Managed)Alta.Api.DataTransferModels.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(Managed)UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.PhysicsModule" HintPath="$(Managed)UnityEngine.PhysicsModule.dll" Private="false" />
     <Reference Include="NLog" HintPath="$(Managed)NLog.dll" Private="false" />
     <Reference Include="Newtonsoft.Json" HintPath="$(Managed)Newtonsoft.Json.dll" Private="false" />
     <Reference Include="MelonLoader" HintPath="$(MelonLoaderDir)MelonLoader.dll" Private="false" />

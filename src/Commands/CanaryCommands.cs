@@ -150,6 +150,27 @@ public static class CanaryCommands
         }
     }
 
+    [Module("profile", "Time scripts and mod patches")]
+    public static class ProfileCommands
+    {
+        [ServerOnly]
+        [Command("start", "Times every script's updates and physics callbacks, and every mod's patches, for N minutes (default 5, max 30). Or, given a pattern such as Pathfinding.*,AstarPath, every method of the matching types.")]
+        private static string Start(int minutes = 5, string pattern = "") => Profiler.Start(minutes, pattern);
+
+        [ServerOnly]
+        [Command("stop", "Ends the profile early and keeps what it has.")]
+        private static string Stop() => Profiler.Stop();
+
+        [ServerOnly]
+        [Command("status", "Whether a profile is running.")]
+        private static string Status() => Profiler.Status;
+
+        [ServerOnly]
+        [Command("last", "The last profile's slowest methods (default 25).")]
+        private static string Last(int count = 25) =>
+            Profiler.Last == null ? "No profile yet ('canary profile start')." : Profiler.Describe(Profiler.Last, Math.Max(1, count));
+    }
+
     [Module("debug", "Temporary Trace logging")]
     public static class DebugCommands
     {

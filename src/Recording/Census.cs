@@ -7,6 +7,7 @@ using Alta.Chunks;
 using Alta.Networking;
 using Alta.Networking.Internal;
 using HarmonyLib;
+using UnityEngine;
 
 namespace Canary.Recording;
 
@@ -14,12 +15,12 @@ namespace Canary.Recording;
 // records its own cost.
 internal static class Census
 {
-    private const int TopChunks = 25;
+    private const int Top = 25;
 
     private static readonly FieldInfo EntityManagerField = AccessTools.Field(typeof(NetworkScene), "entityManager");
     private static readonly Dictionary<uint, string> PrefabNames = new();
     private static readonly Dictionary<Chunk, string> ChunkNames = new();
-    private static bool _warned;
+    private static bool _warned, _physicsWarned;
 
     public static void Take(Action<Record> add)
     {
@@ -54,8 +55,39 @@ internal static class Census
             Total = total,
             DurationMs = (float)Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2),
             ByPrefab = byPrefab.OrderByDescending(kv => kv.Value).ToDictionary(kv => kv.Key, kv => kv.Value),
-            ByChunk = byChunk.OrderByDescending(kv => kv.Value).Take(TopChunks).ToDictionary(kv => kv.Key, kv => kv.Value),
+            ByChunk = byChunk.OrderByDescending(kv => kv.Value).Take(Top).ToDictionary(kv => kv.Key, kv => kv.Value),
+            Physics = TakePhysics(),
         });
+    }
+
+    private static PhysicsCensus TakePhysics()
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var census = new PhysicsCensus();
+        var awake = new Dictionary<string, int>();
+        try
+        {
+            foreach (var body in UnityEngine.Object.FindObjectsOfType<Rigidbody>())
+            {
+                census.Bodies++;
+                if (body.isKinematic) census.Kinematic++;
+                else if (body.IsSleeping()) census.Sleeping++;
+                else
+                {
+                    census.Awake++;
+                    Increment(awake, BodyName(body));
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            if (!_physicsWarned) CanaryMod.Log.Warning($"Physics census failed: {e}");
+            _physicsWarned = true;
+            return null;
+        }
+        census.DurationMs = (float)Math.Round(stopwatch.Elapsed.TotalMilliseconds, 2);
+        census.AwakeByPrefab = awake.OrderByDescending(kv => kv.Value).Take(Top).ToDictionary(kv => kv.Key, kv => kv.Value);
+        return census;
     }
 
     // Unity's name getters allocate, so names are cached by prefab hash. Scene-placed entities have no
@@ -69,6 +101,14 @@ internal static class Census
         if (!PrefabNames.TryGetValue(prefab.Hash, out var name))
             PrefabNames[prefab.Hash] = name = CleanName(prefab.name);
         return name;
+    }
+
+    // Awake bodies are few, so scene objects (which have no prefab) are named after their object.
+    private static string BodyName(Rigidbody body)
+    {
+        var entity = body.GetComponentInParent<NetworkEntity>();
+        if (entity == null) return $"(no entity) {CleanName(body.transform.root.name)}";
+        return entity.Prefab == null ? $"(scene) {CleanName(entity.name)}" : PrefabName(entity);
     }
 
     // "4868 - Shield(Clone)" -> "Shield"
