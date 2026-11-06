@@ -229,6 +229,42 @@ export function timeChart(body: HTMLElement, cfg: TimeChartConfig) {
   return u
 }
 
+// Two runs on one axis of minutes since each started; not part of the shared time zoom.
+export function minutesChart(body: HTMLElement, cfg: { x: number[]; series: Series[]; height?: number; unitShort?: string; fmt?: (v: number) => string }) {
+  const c = colors()
+  const valFmt = cfg.fmt || ((v: number) => fmtNum(v))
+  const show = (v: number | null | undefined) => (v == null ? "–" : `${valFmt(v)}${cfg.unitShort ? " " + cfg.unitShort : ""}`)
+  const opts: uPlot.Options = {
+    width: widthOf(body), height: cfg.height || 170,
+    cursor: { drag: { x: true, y: false, setScale: true }, points: { size: 7, width: 2 } },
+    scales: { x: { time: false }, y: { range: (_u, _min, max) => [0, max != null && max > 0 ? max * 1.08 : 1] } },
+    legend: { live: true },
+    axes: [
+      { stroke: c.muted, grid: { stroke: c.grid, width: 1 }, ticks: { stroke: c.grid, width: 1 }, font: font(12), size: 40,
+        values: (_u, vals) => vals.map((v) => `${v} min`) },
+      { stroke: c.muted, grid: { stroke: c.grid, width: 1 }, ticks: { show: false }, size: 60, font: font(12), values: (_u, vals) => vals.map((v) => fmtNum(v, 1)) },
+    ],
+    series: [
+      { label: "Minute", value: (_u, v) => (v == null ? "–" : `${v} min`) },
+      ...cfg.series.map((s): uPlot.Series => ({ label: s.label, stroke: s.color, width: s.width ?? 2, dash: s.dash, points: { show: false }, spanGaps: false, value: (_u, v) => show(v) })),
+    ],
+  }
+  const tip = makeTip(body)
+  let hovered = false
+  opts.hooks = { setCursor: [(u) => {
+    const { left, top, idx } = u.cursor
+    if (!hovered || left == null || left < 0 || idx == null) { tip.hidden = true; return }
+    const rows = cfg.series.map((s, k) => `<div class="row"><span class="swatch" style="background:${s.color}"></span><span>${esc(s.label)}</span><span class="val">${esc(show(u.data[k + 1][idx]))}</span></div>`)
+    tip.innerHTML = `<div class="head">Minute ${u.data[0][idx]}</div>${rows.join("")}`
+    placeTip(tip, body, u.over, left, top ?? 0)
+  }] }
+  const u = new uPlot(opts, [cfg.x, ...cfg.series.map((s) => s.values)] as uPlot.AlignedData, body)
+  u.over.addEventListener("mouseenter", () => { hovered = true })
+  u.over.addEventListener("mouseleave", () => { hovered = false; tip.hidden = true })
+  u.over.addEventListener("dblclick", () => u.setScale("x", { min: cfg.x[0], max: cfg.x[cfg.x.length - 1] }))
+  return u
+}
+
 export interface LaneEvent<D = unknown> {
   t: number
   t2?: number

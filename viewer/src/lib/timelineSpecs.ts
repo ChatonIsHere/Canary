@@ -65,6 +65,17 @@ export function timelineItems(M: Model): TimelineItem[] {
       ],
     })
     chart("Frames per second", { x: c.t, series: [{ label: "Frames", values: c.frames, color: s(0) }], height: 140, fmt: n0 })
+    if (c.physicsSteps.some((v) => v != null)) {
+      chart("Physics steps per second", {
+        note: "Physics runs at a fixed rate; when frames are slow, Unity runs several steps in one frame to catch up.",
+        x: c.t, series: [{ label: "Steps", values: c.physicsSteps, color: s(0) }], height: 120, fmt: n0,
+      })
+      const physics = c.phases["FixedUpdate.PhysicsFixedUpdate"]
+      if (physics) chart("Physics time per step", {
+        unit: "ms", unitShort: "ms", note: "Includes the game's collision and trigger callbacks.", x: c.t, height: 120,
+        series: [{ label: "Per step", values: physics.map((v, i) => v != null && c.physicsSteps[i] ? v / c.physicsSteps[i]! : null), color: s(0) }],
+      })
+    }
     if (Object.keys(c.modules).length)
       chart("Update modules", { unit: "ms per second", unitShort: "ms/s", x: c.t, series: topSeries(c.modules), height: 200 })
     const ph = M.phaseNames
@@ -94,6 +105,16 @@ export function timelineItems(M: Model): TimelineItem[] {
     if (c.chunks.some((v) => v != null))
       chart("Loaded chunks", { x: c.t, series: [{ label: "Chunks", values: c.chunks, color: s(0), step: true }], height: 120, fmt: n0 })
     chart("Entities", { x: c.t, series: [{ label: "Entities", values: c.entities, color: s(0) }], height: 140, fmt: whole, yMin: null })
+    const pc = M.census.filter((x) => x.physics)
+    if (pc.length > 1)
+      chart("Rigidbodies", {
+        note: "Counted with each entity count. Awake bodies are the ones physics simulates.", x: pc.map((x) => x.t / 1000), height: 160, fmt: whole,
+        series: [
+          { label: "Awake", values: pc.map((x) => x.physics!.awake), color: s(0) },
+          { label: "Sleeping", values: pc.map((x) => x.physics!.sleeping), color: s(1) },
+          { label: "Kinematic", values: pc.map((x) => x.physics!.kinematic), color: s(2) },
+        ],
+      })
     if (M.census.length > 1) {
       const ct = M.census.map((x) => x.t / 1000)
       const map: Record<string, Values> = {}

@@ -2,7 +2,7 @@
 import { Gunzip, unzipSync } from "fflate"
 import {
   RESOURCE_KEYS,
-  type Census, type Col, type ErrorRec, type Gap, type Header, type Mark, type Model, type ParsedFile,
+  type Census, type Col, type ErrorRec, type Profile, type Gap, type Header, type Mark, type Model, type ParsedFile,
   type Player, type Positions, type Rec, type ResourceCols, type Resources, type Sample, type SampleCols, type Spike,
 } from "./types"
 
@@ -144,7 +144,7 @@ export function build(files: ParsedFile[]): Model | null {
   return {
     files, headers,
     samples, spikes: by<Spike>("spike"), errors: by<ErrorRec>("error"), positions,
-    census: by<Census>("census"), resources, marks: by<Mark>("mark"),
+    census: by<Census>("census"), profiles: by<Profile>("profile"), resources, marks: by<Mark>("mark"),
     errorGroups: files.flatMap((f) => f.extras.errorGroups || []),
     mods: files.map((f) => f.extras.mods).find(Boolean) || null,
     summaries: files.filter((f) => f.extras.summary).map((f) => ({ name: f.name, text: f.extras.summary! })),
@@ -182,7 +182,7 @@ function sampleColumns(samples: Sample[], gaps: Gap[]): SampleCols {
   for (const s of samples) for (const k of MAPS) { const m = s[k]; if (m) for (const n of Object.keys(m)) keys[k].add(n) }
   const c: SampleCols = {
     t: [], avg: [], p50: [], p95: [], max: [], heap: [], mem: [], players: [], entities: [], errors: [],
-    gc: [], frames: [], chunks: [], modules: {}, sections: {}, metrics: {}, phases: {},
+    gc: [], frames: [], chunks: [], physicsSteps: [], modules: {}, sections: {}, metrics: {}, phases: {},
   }
   for (const k of MAPS) for (const n of keys[k]) c[k][n] = []
   const gapStarts = new Set(gaps.map((g) => g.from))
@@ -192,7 +192,7 @@ function sampleColumns(samples: Sample[], gaps: Gap[]): SampleCols {
     c.avg.push(v(s.avgMs)); c.p50.push(v(s.p50Ms)); c.p95.push(v(s.p95Ms)); c.max.push(v(s.maxMs))
     c.heap.push(v(s.heapMb)); c.mem.push(v(s.memMb || undefined)); c.players.push(v(s.players))
     c.entities.push(v(s.entities)); c.errors.push(v(s.errors)); c.frames.push(v(s.frames))
-    c.gc.push(isGap ? null : (s.gc ? s.gc[0] : null)); c.chunks.push(v(s.chunks))
+    c.gc.push(isGap ? null : (s.gc ? s.gc[0] : null)); c.chunks.push(v(s.chunks)); c.physicsSteps.push(v(s.physicsSteps))
     // Modules that took no time are left out of a sample.
     for (const n of keys.modules) c.modules[n].push(isGap ? null : (s.modules ? (s.modules[n] ?? 0) : null))
     for (const n of keys.sections) c.sections[n].push(isGap ? null : (s.sections ? (s.sections[n] ?? 0) : 0))

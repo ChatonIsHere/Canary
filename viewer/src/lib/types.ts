@@ -79,6 +79,7 @@ export interface Sample extends Rec {
   modules?: Record<string, number>
   phases?: Record<string, number>
   chunks?: number
+  physicsSteps?: number
   sections?: Record<string, number>
   metrics?: Record<string, number>
 }
@@ -104,6 +105,37 @@ export interface Census extends Rec {
   durationMs: number
   byPrefab?: Record<string, number>
   byChunk?: Record<string, number>
+  physics?: PhysicsCensus
+}
+
+// Rigidbodies; awake, non-kinematic ones are what physics simulates each step.
+export interface PhysicsCensus {
+  bodies: number
+  kinematic: number
+  sleeping: number
+  awake: number
+  durationMs: number
+  awakeByPrefab?: Record<string, number>
+}
+
+// One 'canary profile' run: ms are inclusive, summed over the run's seconds.
+export interface ProfileEntry {
+  name: string
+  kind: string
+  mod: string
+  ms: number
+  mainMs?: number
+  calls: number
+}
+
+export interface Profile extends Rec {
+  seconds: number
+  frames: number
+  methods: number
+  pattern?: string
+  overheadUs?: number
+  entries?: ProfileEntry[]
+  byMod?: Record<string, number>
 }
 
 export interface Mark extends Rec {
@@ -217,6 +249,7 @@ export interface SampleCols {
   gc: Col
   frames: Col
   chunks: Col
+  physicsSteps: Col
   modules: Record<string, Col>
   sections: Record<string, Col>
   metrics: Record<string, Col>
@@ -264,6 +297,7 @@ export interface Model {
   errors: ErrorRec[]
   positions: Positions[]
   census: Census[]
+  profiles: Profile[]
   resources: Resources[]
   marks: Mark[]
   errorGroups: ErrorGroup[]
