@@ -46,6 +46,13 @@ internal static class ModAttribution
         }
     }
 
+    // The mod an assembly belongs to, or "game".
+    public static string ForAssembly(Assembly assembly)
+    {
+        Build();
+        return assembly != null && _assemblies.TryGetValue(assembly, out var mod) ? mod : "game";
+    }
+
     // "Some.Namespace.Type.Method (args) (at file:line)" -> "Some.Namespace.Type"
     private static string TypeOfFrame(string line)
     {

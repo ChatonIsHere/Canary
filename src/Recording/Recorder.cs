@@ -185,6 +185,7 @@ internal static class Recorder
             Modules = ReadUpdateModules(),
             Phases = CanaryConfig.RecordPhases ? FramePhases.TakeSecond() : null,
             LoadedChunks = Alta.Chunks.Chunk.LoadedCount,
+            PhysicsSteps = CanaryConfig.RecordPhases ? FramePhases.TakePhysicsSteps() : null,
         };
         lock (ApiLock)
         {

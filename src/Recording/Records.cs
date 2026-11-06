@@ -70,6 +70,18 @@ public sealed class HeaderRecord : Record
             ["platform"] = LinuxHost.WineVersion != null ? $"Wine {LinuxHost.WineVersion}" : "Windows",
             ["os"] = UnityEngine.SystemInfo.operatingSystem,
             ["cores"] = System.Environment.ProcessorCount,
+            ["physics"] = new Dictionary<string, object>
+            {
+                ["fixedDeltaTime"] = UnityEngine.Time.fixedDeltaTime,
+                ["maximumDeltaTime"] = UnityEngine.Time.maximumDeltaTime,
+                ["autoSimulation"] = UnityEngine.Physics.autoSimulation,
+                ["autoSyncTransforms"] = UnityEngine.Physics.autoSyncTransforms,
+                ["reuseCollisionCallbacks"] = UnityEngine.Physics.reuseCollisionCallbacks,
+                ["solverIterations"] = UnityEngine.Physics.defaultSolverIterations,
+                ["solverVelocityIterations"] = UnityEngine.Physics.defaultSolverVelocityIterations,
+                ["sleepThreshold"] = UnityEngine.Physics.sleepThreshold,
+                ["contactOffset"] = UnityEngine.Physics.defaultContactOffset,
+            },
         };
         if (LinuxHost.Kernel != null) header.Environment["linuxKernel"] = LinuxHost.Kernel;
         if (LinuxHost.Container != null) header.Environment["container"] = LinuxHost.Container;
@@ -97,6 +109,8 @@ public sealed class Sample : Record
     // ms per Unity player-loop phase this second (FramePhases); covers the whole frame, scripts and engine.
     [JsonProperty("phases", NullValueHandling = NullValueHandling.Ignore)] public Dictionary<string, float> Phases { get; set; }
     [JsonProperty("chunks", NullValueHandling = NullValueHandling.Ignore)] public int? LoadedChunks { get; set; }
+    // Fixed (physics) steps this second; Unity runs several per frame to catch up when frames are slow.
+    [JsonProperty("physicsSteps", NullValueHandling = NullValueHandling.Ignore)] public int? PhysicsSteps { get; set; }
     [JsonProperty("sections", NullValueHandling = NullValueHandling.Ignore)] public Dictionary<string, float> Sections { get; set; }
     [JsonProperty("metrics", NullValueHandling = NullValueHandling.Ignore)] public Dictionary<string, double> Metrics { get; set; }
 }
@@ -124,6 +138,19 @@ public sealed class CensusRecord : Record
     [JsonProperty("durationMs")] public float DurationMs { get; set; }
     [JsonProperty("byPrefab")] public Dictionary<string, int> ByPrefab { get; set; }
     [JsonProperty("byChunk")] public Dictionary<string, int> ByChunk { get; set; }
+    [JsonProperty("physics", NullValueHandling = NullValueHandling.Ignore)] public PhysicsCensus Physics { get; set; }
+}
+
+// Rigidbodies in the scene. Awake, non-kinematic bodies are what PhysX simulates each step.
+public sealed class PhysicsCensus
+{
+    [JsonProperty("bodies")] public int Bodies { get; set; }
+    [JsonProperty("kinematic")] public int Kinematic { get; set; }
+    [JsonProperty("sleeping")] public int Sleeping { get; set; }
+    [JsonProperty("awake")] public int Awake { get; set; }
+    [JsonProperty("durationMs")] public float DurationMs { get; set; }
+    // Awake bodies by the entity they belong to.
+    [JsonProperty("awakeByPrefab")] public Dictionary<string, int> AwakeByPrefab { get; set; }
 }
 
 public sealed class SpikeRecord : Record
@@ -197,6 +224,33 @@ public sealed class MachineResources
     [JsonProperty("netTxKBps", NullValueHandling = NullValueHandling.Ignore)] public double? NetTxKBps { get; set; }
     [JsonProperty("diskFreeGb", NullValueHandling = NullValueHandling.Ignore)] public double? DiskFreeGb { get; set; }
     [JsonProperty("diskTotalGb", NullValueHandling = NullValueHandling.Ignore)] public double? DiskTotalGb { get; set; }
+}
+
+// One 'canary profile' run. Ms is inclusive and summed over the run; Seconds is how long it ran.
+public sealed class ProfileRecord : Record
+{
+    public override string Type => "profile";
+    [JsonProperty("seconds")] public float Seconds { get; set; }
+    [JsonProperty("frames")] public int Frames { get; set; }
+    [JsonProperty("methods")] public int Methods { get; set; }
+    // What 'canary profile start' was given to time, if not the default.
+    [JsonProperty("pattern", NullValueHandling = NullValueHandling.Ignore)] public string Pattern { get; set; }
+    // The profiler's own cost per call, already taken off each method's ms.
+    [JsonProperty("overheadUs")] public float OverheadUs { get; set; }
+    [JsonProperty("entries")] public List<ProfileEntry> Entries { get; set; }
+    [JsonProperty("byMod")] public Dictionary<string, float> ByMod { get; set; }
+}
+
+public sealed class ProfileEntry
+{
+    [JsonProperty("name")] public string Name { get; set; }
+    // update, fixedUpdate, lateUpdate, collision, trigger, prefix, postfix, finalizer, transpiled, or method (from a pattern).
+    [JsonProperty("kind")] public string Kind { get; set; }
+    [JsonProperty("mod")] public string Mod { get; set; }
+    [JsonProperty("ms")] public float Ms { get; set; }
+    // The part of Ms spent on the main thread, which is what makes frames slow.
+    [JsonProperty("mainMs")] public float MainMs { get; set; }
+    [JsonProperty("calls")] public long Calls { get; set; }
 }
 
 public sealed class MarkRecord : Record

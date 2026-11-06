@@ -21,6 +21,8 @@ internal static class FramePhases
     private static long[] _frameTicks;
     private static int _current = -1;
     private static long _last;
+    private static int _physicsSlot = -1;
+    private static int _physicsSteps;
 
     public static bool Installed { get; private set; }
 
@@ -46,6 +48,7 @@ internal static class FramePhases
             {
                 var slot = names.Count;
                 names.Add($"{system.type?.Name}.{sub.type?.Name}");
+                if (names[slot] == "FixedUpdate.PhysicsFixedUpdate") _physicsSlot = slot;
                 list.Add(Marker(slot, frameStart: i == 0 && list.Count == 0));
                 list.Add(sub);
             }
@@ -83,6 +86,7 @@ internal static class FramePhases
             _frameTicks[_current] += elapsed;
         }
         if (frameStart) FinishFrame();
+        if (slot == _physicsSlot) _physicsSteps++;
         _current = slot;
         _last = now;
     }
@@ -120,6 +124,15 @@ internal static class FramePhases
             (phases ??= new Dictionary<string, float>())[_names[i]] = Round(ms);
         }
         return phases;
+    }
+
+    // Physics steps since the last call: Unity runs as many fixed steps per frame as it needs to catch up.
+    public static int? TakePhysicsSteps()
+    {
+        if (!Installed || _physicsSlot < 0) return null;
+        var steps = _physicsSteps;
+        _physicsSteps = 0;
+        return steps;
     }
 
     // The last spike frame's breakdown, once: a spike takes it, so the next one can't reuse it.
