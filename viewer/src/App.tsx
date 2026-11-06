@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { Clock, Download, FolderOpen, Info, ZoomOut } from "lucide-react"
+import { Clock, Download, FolderOpen, GitCompareArrows, Info, ZoomOut } from "lucide-react"
 import * as Charts from "@/lib/charts"
 import { build, readFile, unreadable } from "@/lib/load"
 import { drawMap, map, type MapBackground, type MapMeta } from "@/lib/map"
@@ -21,10 +21,12 @@ import { Players } from "@/components/views/Players"
 import { Entities, Errors } from "@/components/views/Entities"
 import { Files, Mods, Server } from "@/components/views/Server"
 import { Raw } from "@/components/views/Raw"
+import { Compare, runName } from "@/components/views/Compare"
+import { Profiles } from "@/components/views/Profiles"
 
 const SECTIONS = [
-  ["overview", "Overview"], ["server", "Server"], ["timeline", "Timeline"], ["phases", "Where the time goes"],
-  ["spikes", "Lag spikes"], ["players", "Players"], ["entities", "Entities"], ["errors", "Errors"],
+  ["overview", "Overview"], ["compare", "Compare"], ["server", "Server"], ["timeline", "Timeline"], ["phases", "Where the time goes"],
+  ["spikes", "Lag spikes"], ["profile", "Profile"], ["players", "Players"], ["entities", "Entities"], ["errors", "Errors"],
   ["modules", "Update modules"], ["mods", "Mods"], ["files", "Files"], ["raw", "Raw"],
 ] as const
 
@@ -35,6 +37,9 @@ const MAP_HELP = "To draw the game's map underneath, open the map.png and map.js
 
 export default function App() {
   const [M, setM] = useState<Model | null>(null)
+  // A second recording to compare with.
+  const [B, setB] = useState<Model | null>(null)
+  const compareInput = useRef<HTMLInputElement>(null)
   const [notes, setNotes] = useState<ReactNode>(null)
   const [tz, setTz] = useState(Time.getMode())
   // range follows the zoom as it happens; viewRange catches up a moment later, for the views.
@@ -130,12 +135,17 @@ export default function App() {
       if (note && !modelRef.current) setNotes(`${note} Now open a recording.`)
       return
     }
-    const parsed: ParsedFile[] = []
-    for (const f of rest) {
-      try { parsed.push(await readFile(f)) } catch (e) { parsed.push(unreadable(f, (e as Error).message)) }
-    }
-    show(parsed)
+    show(await readAll(rest))
   }, [setMap, show])
+
+  const openCompare = useCallback(async (fileList: FileList) => {
+    const { rest } = await splitMapFiles([...fileList])
+    const parsed = await readAll(rest)
+    const model = build(parsed)
+    if (!model) { setNotes(`No Canary records to compare in ${parsed.map((p) => p.name).join(", ")}.`); return }
+    setB(model)
+    setTimeout(() => document.getElementById("compare")?.scrollIntoView(), 0)
+  }, [])
 
   // Drop files anywhere on the page.
   useEffect(() => {
@@ -220,6 +230,7 @@ export default function App() {
   }, [bg, mapNote, mapSaved])
 
   const hasPhases = !!M?.phaseNames.work.length
+  const shown = (id: string) => (id !== "phases" || hasPhases) && (id !== "compare" || !!B) && (id !== "profile" || !!M?.profiles.length)
   const zoomed = !!M && (range[0] !== M.tMin || range[1] !== M.tMax)
   const now = M?.tMax ?? 0
   const serverZone = !!M && Time.hasServerZone()
@@ -229,12 +240,14 @@ export default function App() {
     <div className="min-h-svh">
       <input ref={fileInput} type="file" multiple accept=".jsonl,.gz,.zip,.json,.txt,.png" hidden
         onChange={(e) => { if (e.target.files) open(e.target.files); e.target.value = "" }} />
+      <input ref={compareInput} type="file" multiple accept=".jsonl,.gz,.zip,.json,.txt" hidden
+        onChange={(e) => { if (e.target.files) openCompare(e.target.files); e.target.value = "" }} />
       <h1 className="sr-only">Canary recording viewer</h1>
       {M && (
         <div className="mx-auto mt-4 flex max-w-[1400px] flex-wrap items-center gap-2 px-4 sm:px-6">
           <nav aria-label="Sections" className="min-w-0 flex-1">
             <ul className="flex flex-wrap gap-1 rounded-lg bg-muted p-1">
-              {SECTIONS.filter(([id]) => id !== "phases" || hasPhases).map(([id, label]) => (
+              {SECTIONS.filter(([id]) => shown(id)).map(([id, label]) => (
                 <li key={id}>
                   <a href={`#${id}`} aria-current={active === id ? "location" : undefined}
                     className={cn(buttonVariants({ variant: "ghost" }), "h-8 px-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -261,6 +274,10 @@ export default function App() {
             </div>
             <Button variant="outline" className="h-9" onClick={() => Charts.resetZoom()} disabled={!zoomed}><ZoomOut data-icon="inline-start" />Zoom out</Button>
             <Button variant="outline" className="h-9" onClick={exportCsv}><Download data-icon="inline-start" />Export CSV</Button>
+            <Button variant="outline" className="h-9" onClick={() => compareInput.current?.click()}
+              title={B ? `Comparing with ${runName(B)}` : "Open a second recording to compare with this one"}>
+              <GitCompareArrows data-icon="inline-start" />{B ? "Compare with other files" : "Open to compare"}
+            </Button>
             <Button className="h-9" onClick={() => fileInput.current?.click()}><FolderOpen data-icon="inline-start" />Open files</Button>
           </div>
         </div>
@@ -301,12 +318,14 @@ export default function App() {
         {M && (
           <div className="grid grid-cols-1 gap-4">
             <Overview M={M} R={viewRange} />
+            {B && <Compare A={M} B={B} onClose={() => setB(null)} />}
             <Server M={M} />
             <Section id="timeline" title="Timeline" sub="Drag across a chart to zoom; double-click to zoom out. The rest of the page follows the zoom.">
               <Timeline key={`${loadId}-${tz}`} model={M} range={range} />
             </Section>
             {hasPhases && <Phases M={M} R={viewRange} />}
             <Spikes M={M} R={viewRange} />
+            <Profiles M={M} R={viewRange} />
             <Players M={M} R={viewRange} bg={bg} bgOn={bgOn} onBgOn={toggleBg} mapNote={mapStatus} onForget={forgetMap} />
             <Entities M={M} R={viewRange} />
             <Errors M={M} R={viewRange} />
@@ -343,4 +362,12 @@ function TzBanner({ M }: { M: Model }) {
       <AlertDescription className="text-sm text-foreground">{lines.map((l, i) => <div key={i}>{l}</div>)}</AlertDescription>
     </Alert>
   )
+}
+
+async function readAll(files: File[]) {
+  const parsed: ParsedFile[] = []
+  for (const f of files) {
+    try { parsed.push(await readFile(f)) } catch (e) { parsed.push(unreadable(f, (e as Error).message)) }
+  }
+  return parsed
 }

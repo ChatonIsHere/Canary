@@ -31,6 +31,18 @@ export function Entities({ M, R }: { M: Model; R: Range }) {
         { key: "last", label: "At end", num: true, render: (r) => int(r.last) },
         { key: "change", label: "Change", num: true, render: (r) => signed(r.change) },
       ]} />
+      {e.physics && <>
+        <SubHeading>Awake rigidbodies</SubHeading>
+        <p className="text-sm text-muted-foreground">
+          {int(e.physics.awakeAvg)} of {int(e.physics.bodies)} rigidbodies awake on average, over {e.physics.counts} count(s) ({num(e.physics.avgMs)} ms each).
+          Awake bodies are the ones physics simulates every step.
+        </p>
+        <DataTable label="Awake rigidbodies by type" rows={e.physics.awake} sortKey="avg" caption="By the entity each body belongs to; the 25 types with the most at each count." cols={[
+          { key: "name", label: "Type", render: (r) => <span className="break-all">{r.name}</span> },
+          { key: "avg", label: "Average", num: true, render: (r) => num(r.avg, 1) },
+          { key: "peak", label: "Peak", num: true, render: (r) => int(r.peak) },
+        ]} />
+      </>}
     </Section>
   )
 }

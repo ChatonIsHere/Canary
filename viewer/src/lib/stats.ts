@@ -317,18 +317,29 @@ export function entityRows(M: Model, R: Range) {
   })
   const chunkNames = new Set(census.flatMap((c) => Object.keys(c.byChunk || {})))
   const chunks = [...chunkNames].map((n) => ({ name: n, first: first.byChunk?.[n] ?? 0, last: last.byChunk?.[n] ?? 0 })).map((r) => ({ ...r, change: r.last - r.first }))
-  return { census, avgMs: mean(census.map((c) => c.durationMs)), types, chunks }
+  // Awake rigidbodies, averaged over the counts that have them.
+  const pc = census.filter((c) => c.physics)
+  const awakeNames = new Set(pc.flatMap((c) => Object.keys(c.physics!.awakeByPrefab || {})))
+  const awake = [...awakeNames].map((n) => {
+    const series = pc.map((c) => c.physics!.awakeByPrefab?.[n] ?? 0)
+    return { name: n, avg: mean(series)!, peak: maxOf(series) }
+  })
+  const physics = pc.length ? {
+    counts: pc.length, awake, avgMs: mean(pc.map((c) => c.physics!.durationMs)),
+    bodies: mean(pc.map((c) => c.physics!.bodies)), awakeAvg: mean(pc.map((c) => c.physics!.awake)),
+  } : null
+  return { census, avgMs: mean(census.map((c) => c.durationMs)), types, chunks, physics }
 }
 
 // CSV of the per-second samples in the range.
 export function samplesCsv(M: Model, R: Range) {
   const samples = within(M.samples, R)
   const modules = Object.keys(M.cols.modules), phases = Object.keys(M.cols.phases)
-  const head = ["utc", `time (${Time.label(R[0])})`, "frames", "avgMs", "p50Ms", "p95Ms", "maxMs", "gc", "heapMb", "memMb", "players", "entities", "chunks", "errors",
+  const head = ["utc", `time (${Time.label(R[0])})`, "frames", "avgMs", "p50Ms", "p95Ms", "maxMs", "gc", "heapMb", "memMb", "players", "entities", "chunks", "physicsSteps", "errors",
     ...modules.map((m) => `module: ${m}`), ...phases.map((p) => `phase: ${p}`)]
   const q = (v: unknown) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ""))
   const lines = [head.map(q).join(",")]
-  for (const s of samples) lines.push([new Date(s.t).toISOString(), Time.fmt(s.t), s.frames, s.avgMs, s.p50Ms, s.p95Ms, s.maxMs, s.gc?.[0] ?? "", s.heapMb, s.memMb ?? "", s.players, s.entities, s.chunks ?? "", s.errors,
+  for (const s of samples) lines.push([new Date(s.t).toISOString(), Time.fmt(s.t), s.frames, s.avgMs, s.p50Ms, s.p95Ms, s.maxMs, s.gc?.[0] ?? "", s.heapMb, s.memMb ?? "", s.players, s.entities, s.chunks ?? "", s.physicsSteps ?? "", s.errors,
     ...modules.map((m) => s.modules?.[m] ?? 0), ...phases.map((p) => (s.phases ? s.phases[p] ?? 0 : ""))].map(q).join(","))
   return lines.join("\n")
 }
