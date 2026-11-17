@@ -42,7 +42,7 @@ export function Players({ M, R, bg, bgOn, onBgOn, mapNote, onForget }: {
   bgOn: boolean
   onBgOn: (on: boolean) => void
   mapNote: string
-  onForget: () => void
+  onForget?: () => void
 }) {
   const { tracks, rows } = useMemo(() => playerRows(M, R), [M, R])
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -203,7 +203,7 @@ export function Players({ M, R, bg, bgOn, onBgOn, mapNote, onForget }: {
           </ul>
           <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span>{mapNote}</span>
-            {bg && <Button variant="ghost" size="sm" className="h-8 text-sm" onClick={onForget}>Forget map</Button>}
+            {bg && onForget && <Button variant="ghost" size="sm" className="h-8 text-sm" onClick={onForget}>Forget map</Button>}
           </p>
         </figure>
         <DataTable label="Players" rows={rows} sortKey="online" empty="No players in this time range." cols={[

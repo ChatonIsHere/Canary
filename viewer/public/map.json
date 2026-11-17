@@ -1,0 +1,6 @@
+{
+  "name": "MainMap",
+  "bottomLeft": [-1688.0, -805.0],
+  "topRight": [190.0, 1073.0],
+  "image": "map.webp"
+}

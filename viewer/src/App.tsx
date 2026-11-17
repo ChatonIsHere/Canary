@@ -3,7 +3,7 @@ import { Clock, Download, FolderOpen, GitCompareArrows, Info, ZoomOut } from "lu
 import * as Charts from "@/lib/charts"
 import { build, readFile, unreadable } from "@/lib/load"
 import { drawMap, map, type MapBackground, type MapMeta } from "@/lib/map"
-import { isMapMeta, mapDb, splitMapFiles, store } from "@/lib/mapStore"
+import { bundledMap, isMapMeta, mapDb, splitMapFiles, store } from "@/lib/mapStore"
 import { samplesCsv, type Range } from "@/lib/stats"
 import * as Time from "@/lib/time"
 import type { Model, ParsedFile } from "@/lib/types"
@@ -56,12 +56,13 @@ export default function App() {
   // Game map
   const [bg, setBg] = useState<MapBackground | null>(null)
   const [bgOn, setBgOn] = useState(true)
-  const [mapSaved, setMapSaved] = useState(false)
+  // Where the map in use came from: opened and kept in this browser, opened but not kept, or the viewer's own.
+  const [mapKept, setMapKept] = useState<"saved" | "lost" | "bundled">("bundled")
   const [mapNote, setMapNote] = useState<string | null>(null)
   // The pair in use, or half of one waiting for the other.
   const pending = useRef<{ meta: MapMeta | null; blob: Blob | null; url: string | null }>({ meta: null, blob: null, url: null })
 
-  const setMap = useCallback(async (meta: MapMeta, blob: Blob, save: boolean) => {
+  const setMap = useCallback(async (meta: MapMeta, blob: Blob, how: "save" | "saved" | "bundled") => {
     const url = URL.createObjectURL(blob)
     const img = new Image()
     img.src = url
@@ -69,20 +70,26 @@ export default function App() {
     if (pending.current.url) URL.revokeObjectURL(pending.current.url)
     pending.current.url = url
     setBgOn(store.get("canary-map") !== "off")
-    setMapSaved(save ? await mapDb.set({ meta, blob }) : true)
+    setMapKept(how === "save" ? (await mapDb.set({ meta, blob }) ? "saved" : "lost") : how)
     setBg({ img, meta })
     return null
   }, [])
 
+  // A map opened before and kept in this browser, else the one bundled with the viewer.
+  const loadMap = useCallback(async (live: () => boolean) => {
+    const v = await mapDb.get()
+    const saved = v && isMapMeta(v.meta) && v.blob instanceof Blob ? v : null
+    const pair = saved || await bundledMap()
+    if (!live() || !pair || pending.current.meta) return
+    pending.current.meta = pair.meta; pending.current.blob = pair.blob
+    setMap(pair.meta, pair.blob, saved ? "saved" : "bundled")
+  }, [setMap])
+
   useEffect(() => {
     let live = true
-    mapDb.get().then((v) => {
-      if (!live || !v || !isMapMeta(v.meta) || !(v.blob instanceof Blob) || pending.current.meta) return
-      pending.current.meta = v.meta; pending.current.blob = v.blob
-      setMap(v.meta, v.blob, false)
-    })
+    loadMap(() => live)
     return () => { live = false }
-  }, [setMap])
+  }, [loadMap])
 
   const forgetMap = () => {
     mapDb.clear()
@@ -90,6 +97,7 @@ export default function App() {
     pending.current = { meta: null, blob: null, url: null }
     setBg(null)
     setMapNote(null)
+    loadMap(() => true)
   }
 
   const toggleBg = (on: boolean) => {
@@ -127,7 +135,7 @@ export default function App() {
       const p = pending.current
       if (meta) p.meta = meta
       if (images.length) p.blob = images.find((f) => f.name === p.meta?.image) || images[0]
-      if (p.meta && p.blob) note = await setMap(p.meta, p.blob, true) || `Map loaded: ${p.meta.name || "game map"}.`
+      if (p.meta && p.blob) note = await setMap(p.meta, p.blob, "save") || `Map loaded: ${p.meta.name || "game map"}.`
       else note = p.meta ? "Got map.json; open map.png with it." : "Got a map image; open the map.json that says where it goes with it."
       setMapNote(note)
     }
@@ -226,8 +234,9 @@ export default function App() {
     if (!bg) return mapNote || MAP_HELP
     const { name, bottomLeft: [x0, z0], topRight: [x1, z1] } = bg.meta
     return `Map: ${name || "game map"}, x ${Math.round(x0)} to ${Math.round(x1)}, z ${Math.round(z0)} to ${Math.round(z1)}. `
-      + (mapSaved ? "Kept in this browser for next time." : "This browser can't keep it, so it's gone when the page closes.")
-  }, [bg, mapNote, mapSaved])
+      + { saved: "Kept in this browser for next time.", lost: "This browser can't keep it, so it's gone when the page closes.",
+        bundled: "Bundled with the viewer; if the game's map has changed, open the map.png and map.json that tools/extract_map.py makes." }[mapKept]
+  }, [bg, mapNote, mapKept])
 
   const hasPhases = !!M?.phaseNames.work.length
   const shown = (id: string) => (id !== "phases" || hasPhases) && (id !== "compare" || !!B) && (id !== "profile" || !!M?.profiles.length)
@@ -298,8 +307,7 @@ export default function App() {
                 <h2 id="welcome-title" className="text-xl font-semibold">Open a recording</h2>
                 <p className="text-muted-foreground">
                   Open recordings, saved buffers or reports from a server's <code>UserData/Canary</code> folder, or drop
-                  them here. Several at once are merged into one timeline. Add <code>map.png</code> and <code>map.json</code>{" "}
-                  to see players on the game's map.
+                  them here. Several at once are merged into one timeline.
                 </p>
                 <Button size="lg" className="h-10 px-4 text-base" onClick={() => fileInput.current?.click()}><FolderOpen data-icon="inline-start" />Open files</Button>
               </CardContent>
@@ -326,7 +334,7 @@ export default function App() {
             {hasPhases && <Phases M={M} R={viewRange} />}
             <Spikes M={M} R={viewRange} />
             <Profiles M={M} R={viewRange} />
-            <Players M={M} R={viewRange} bg={bg} bgOn={bgOn} onBgOn={toggleBg} mapNote={mapStatus} onForget={forgetMap} />
+            <Players M={M} R={viewRange} bg={bg} bgOn={bgOn} onBgOn={toggleBg} mapNote={mapStatus} onForget={mapKept === "bundled" ? undefined : forgetMap} />
             <Entities M={M} R={viewRange} />
             <Errors M={M} R={viewRange} />
             <Modules M={M} R={viewRange} />

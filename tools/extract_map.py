@@ -5,8 +5,8 @@ covers ({"bottomLeft": [x, z], "topRight": [x, z]}). Drop both into the viewer a
 
 The game draws its map board from one texture (MapBoardDirectRenderer.map) stretched over the corners its
 Map asset ("MainMap") stores; the pieces players uncover are only fog laid over it. This reads those two
-objects straight from the game's data files: no running game needed. The image is the game's own artwork,
-so it is extracted from each person's install rather than shipped with Canary.
+objects straight from the game's data files: no running game needed. The viewer bundles a copy
+(viewer/public/map.webp); rerun this if a game update changes the map.
 
 Needs UnityPy (pip install UnityPy). Usage:
     python extract_map.py "C:/Program Files (x86)/Steam/steamapps/common/A Township Tale" [out_dir]

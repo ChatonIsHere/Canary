@@ -28,8 +28,9 @@ plots where players went. Recordings from Canary 0.4.0 on also show time per Uni
 phases each spike was stuck in, and how many chunks were loaded. **Open to compare** puts two recordings side
 by side, with a summary table and minute-by-minute charts.
 
-To see players on the game's map, extract it from your own install (Canary doesn't ship the game's artwork),
-then open the `map.png` and `map.json` it writes along with a recording. The viewer remembers it.
+Players are drawn over the game's map, which comes with the viewer. If a game update changes the map, extract
+it from your own install and open the `map.png` and `map.json` it writes along with a recording; the viewer
+remembers it.
 
 ```
 pip install UnityPy

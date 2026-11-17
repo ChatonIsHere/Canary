@@ -1,5 +1,5 @@
 // Game map: map.png and map.json from tools/extract_map.py, drawn under the player positions. Kept in
-// IndexedDB for next time; without storage it lasts until the page closes.
+// IndexedDB for next time; without storage it lasts until the page closes. Without one, the bundled map is used.
 import type { MapMeta } from "./map"
 
 interface Saved { meta: MapMeta; blob: Blob }
@@ -31,6 +31,17 @@ export const isMapMeta = (j: unknown): j is MapMeta => {
   const m = j as MapMeta | null
   return !!m && [m.bottomLeft, m.topRight].every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite))
     && m.topRight[0] > m.bottomLeft[0] && m.topRight[1] > m.bottomLeft[1]
+}
+
+// The map that ships with the viewer (public/map.json and its image), or null if it can't be fetched.
+export async function bundledMap(): Promise<Saved | null> {
+  try {
+    const r = await fetch("map.json")
+    const meta: unknown = r.ok ? await r.json() : null
+    if (!isMapMeta(meta)) return null
+    const img = await fetch(meta.image || "map.webp")
+    return img.ok ? { meta, blob: await img.blob() } : null
+  } catch { return null }
 }
 
 // Takes map.png and map.json (recognised by content) out of a batch of files.
