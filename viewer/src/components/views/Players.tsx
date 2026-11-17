@@ -49,6 +49,8 @@ export function Players({ M, R, bg, bgOn, onBgOn, mapNote, onForget }: {
   const tip = useRef<HTMLDivElement>(null)
   const [paths, setPaths] = useState(true)
   const [rings, setRings] = useState(true)
+  const [chunkGrid, setChunkGrid] = useState(false)
+  const [chunkLabels, setChunkLabels] = useState(false)
   // The slider goes back to the end whenever the range changes.
   const rangeKey = `${R[0]}|${R[1]}`
   const [scrub, setScrub] = useState({ key: "", v: 1000 })
@@ -70,9 +72,9 @@ export function Players({ M, R, bg, bgOn, onBgOn, mapNote, onForget }: {
   }, [M, R, tracks, step, tMin, tMax, bg, bgOn])
 
   useLayoutEffect(() => {
-    Object.assign(map, { paths, spikeRings: rings, scrubT })
+    Object.assign(map, { paths, spikeRings: rings, chunkGrid, chunkLabels, scrubT })
     drawMap(canvas.current)
-  }, [paths, rings, scrubT])
+  }, [paths, rings, chunkGrid, chunkLabels, scrubT])
 
   // Hovering a timeline chart shows where everyone was at that moment.
   useEffect(() => {
@@ -178,6 +180,8 @@ export function Players({ M, R, bg, bgOn, onBgOn, mapNote, onForget }: {
             <Check id="map-spikes" label="Spikes" checked={rings} onChange={setRings} />
             <Check id="map-paths" label="Paths" checked={paths} onChange={setPaths} />
             <Check id="map-bg" label="Game map" checked={!!bg && bgOn} onChange={onBgOn} disabled={!bg} />
+            <Check id="map-chunks" label="Chunk grid" checked={chunkGrid} onChange={setChunkGrid} />
+            <Check id="map-chunk-labels" label="Chunk labels" checked={chunkGrid && chunkLabels} onChange={setChunkLabels} disabled={!chunkGrid} />
             <div className="flex gap-1.5">
               <IconButton label="Zoom out" onClick={() => zoom(1.5)}><Minus /></IconButton>
               <IconButton label="Zoom in" onClick={() => zoom(1 / 1.5)}><Plus /></IconButton>

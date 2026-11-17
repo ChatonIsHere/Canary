@@ -24,6 +24,8 @@ export const map = {
   bgOn: true,
   paths: true,
   spikeRings: true,
+  chunkGrid: false,
+  chunkLabels: false,
   tracks: [] as Track[],
   spikes: [] as Spike[],
   step: 5000,
@@ -33,6 +35,9 @@ export const map = {
   scrubT: null as number | null,
   points: [] as Hit[],
 }
+
+// The game's overworld chunks: a 64 by 64 grid of 64 m squares from (-2048, -2048), named "Chunk <x>-<z>".
+const CHUNK = { origin: -2048, size: 64, count: 64 }
 
 // Players keep one colour each, by first appearance; past eight they're "Other".
 export const playerColor = (p: Player) => (p.order < SLOTS ? slot(p.order) : otherColor())
@@ -126,10 +131,13 @@ export function drawMap(canvas: HTMLCanvasElement | null) {
   const xs: number[] = [], zs: number[] = []
   for (let x = Math.ceil(v.minX / stepM) * stepM; x <= v.minX + v.span; x += stepM) xs.push(x)
   for (let z = Math.ceil(v.minZ / stepM) * stepM; z <= v.minZ + v.span; z += stepM) zs.push(z)
-  ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.globalAlpha = bg ? 0.5 : 1
-  for (const x of xs) { ctx.beginPath(); ctx.moveTo(px(x), 0); ctx.lineTo(px(x), size); ctx.stroke() }
-  for (const z of zs) { ctx.beginPath(); ctx.moveTo(0, pz(z)); ctx.lineTo(size, pz(z)); ctx.stroke() }
-  ctx.globalAlpha = 1
+  if (map.chunkGrid) drawChunks(ctx, size, px, pz, text, ink, muted)
+  else {
+    ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.globalAlpha = bg ? 0.5 : 1
+    for (const x of xs) { ctx.beginPath(); ctx.moveTo(px(x), 0); ctx.lineTo(px(x), size); ctx.stroke() }
+    for (const z of zs) { ctx.beginPath(); ctx.moveTo(0, pz(z)); ctx.lineTo(size, pz(z)); ctx.stroke() }
+    ctx.globalAlpha = 1
+  }
   ctx.fillStyle = muted; ctx.font = font(12)
   for (const x of xs) text(`x ${Math.round(x)}`, px(x) + 3, size - 5)
   for (const z of zs) text(`z ${Math.round(z)}`, 3, pz(z) - 4)
@@ -187,6 +195,31 @@ export function drawMap(canvas: HTMLCanvasElement | null) {
     text(p.name, px(pt.x) + 9, pz(pt.z) - 7)
     map.points.push({ x: px(pt.x), y: pz(pt.z), p, pt })
   }
+}
+
+// Chunk borders in view, and each chunk's "x-z" when there's room for it.
+function drawChunks(ctx: CanvasRenderingContext2D, size: number, px: (x: number) => number, pz: (z: number) => number,
+  text: (s: string, x: number, y: number) => void, ink: string, muted: string) {
+  const v = map.view!, { origin, size: cs, count } = CHUNK
+  const cell = cs / v.span * size
+  const range = (min: number) => [Math.max(0, Math.floor((min - origin) / cs)), Math.min(count, Math.ceil((min + v.span - origin) / cs))]
+  const [i0, i1] = range(v.minX), [j0, j1] = range(v.minZ)
+  if (i0 >= i1 || j0 >= j1) return
+  const at = (i: number) => origin + i * cs
+  if (cell >= 4) {
+    ctx.strokeStyle = ink; ctx.lineWidth = 1; ctx.globalAlpha = 0.3
+    ctx.beginPath()
+    for (let i = i0; i <= i1; i++) { ctx.moveTo(px(at(i)), pz(at(j0))); ctx.lineTo(px(at(i)), pz(at(j1))) }
+    for (let j = j0; j <= j1; j++) { ctx.moveTo(px(at(i0)), pz(at(j))); ctx.lineTo(px(at(i1)), pz(at(j))) }
+    ctx.stroke()
+    ctx.globalAlpha = 1
+  }
+  if (!map.chunkLabels) return
+  ctx.font = font(11); ctx.fillStyle = muted; ctx.textAlign = "center"; ctx.textBaseline = "middle"
+  if (cell >= ctx.measureText("63-63").width + 8) {
+    for (let i = i0; i < i1; i++) for (let j = j0; j < j1; j++) text(`${i}-${j}`, px(at(i + 0.5)), pz(at(j + 0.5)))
+  } else text("Zoom in to see chunk labels", size / 2, 14)
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"
 }
 
 // The tooltip for the point under (x, y) on the canvas, or null.
